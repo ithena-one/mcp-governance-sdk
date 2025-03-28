@@ -4,6 +4,9 @@ import { UserIdentity, ResolvedCredentials, OperationContext } from '../types.js
  * Interface for resolving credentials (secrets, API keys, etc.) needed for an operation.
  */
 export interface CredentialResolver {
+    /** Optional initialization logic. */
+    initialize?(): Promise<void>;
+    
     /**
      * Resolves credentials needed for the operation, potentially based on identity.
      * This is typically called *after* successful authorization.
@@ -13,4 +16,7 @@ export interface CredentialResolver {
      * @throws {CredentialResolutionError} on failure to resolve required credentials.
      */
     resolveCredentials(identity: UserIdentity | null, opCtx: OperationContext): Promise<ResolvedCredentials | null | undefined>;
+
+    /** Optional cleanup logic. */
+    shutdown?(): Promise<void>;
 } 

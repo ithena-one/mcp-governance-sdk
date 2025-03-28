@@ -4,6 +4,9 @@ import { AuditRecord } from '../types.js';
  * Interface for logging audit records.
  */
 export interface AuditLogStore {
+    /** Optional initialization logic. */
+    initialize?(): Promise<void>;
+    
     /**
      * Logs a completed audit record. Implementations should handle errors gracefully
      * (e.g., log to console) and avoid throwing errors that would disrupt the

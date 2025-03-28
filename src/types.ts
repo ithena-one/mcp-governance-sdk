@@ -1,13 +1,15 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import {
     Request,
     Notification,
     Result,
     RequestId,
     JSONRPCError,
-    RequestHandlerExtra as BaseRequestHandlerExtra
-} from '@modelcontextprotocol/sdk';
+} from '@modelcontextprotocol/sdk/types.js';
+import { RequestHandlerExtra as BaseRequestHandlerExtra } from '@modelcontextprotocol/sdk/shared/protocol.js';
 import { Logger } from './interfaces/logger.js';
-import { Transport } from '@modelcontextprotocol/sdk';
+import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 
 // --- Basic Governance Types ---
 
@@ -102,7 +104,13 @@ export interface GovernedRequestHandlerExtra extends BaseRequestHandlerExtra {
     readonly traceContext?: TraceContext;
     /** Context about the transport layer. */
     readonly transportContext: TransportContext;
+    // Inherits 'signal' and 'sessionId' from BaseRequestHandlerExtra
+    // Explicitly add signal again for clarity if BaseRequestHandlerExtra definition is uncertain
+    /** An abort signal used to communicate if the request was cancelled from the sender's side. */
+    readonly signal: AbortSignal;
 }
+
+
 
 /**
  * Extra context provided to notification handlers registered via `GovernedServer`.
@@ -120,7 +128,10 @@ export interface GovernedNotificationHandlerExtra {
     readonly transportContext: TransportContext;
     /** Session ID from transport, if available */
     readonly sessionId?: string;
-    /** An abort signal used to communicate if the processing was cancelled externally. */
+     /**
+     * An abort signal used to communicate if the processing was cancelled externally.
+     * Provided by the base SDK's handler call.
+     */
     readonly signal: AbortSignal;
 }
 

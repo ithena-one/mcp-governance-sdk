@@ -1,3 +1,5 @@
+/* eslint-disable no-console */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Logger, LogLevel, LogContext } from '../interfaces/logger.js';
 
 /**
@@ -17,6 +19,11 @@ export class ConsoleLogger implements Logger {
     constructor(baseContext: LogContext = {}, minLevel: LogLevel = 'info') {
         this.baseContext = baseContext;
         this.minLevel = minLevel;
+    }
+
+    async initialize(): Promise<void> {
+        // Optional: Log initialization
+        this.info("ConsoleLogger initialized");
     }
 
     private shouldLog(level: LogLevel): boolean {
@@ -44,13 +51,23 @@ export class ConsoleLogger implements Logger {
                     stack: error.stack, // Consider if stack is too verbose for prod
                 };
             } else {
-                logEntry.error = error;
+                logEntry.error = error; // Log non-Error types as is
             }
         }
 
-        // Use console[level] if it exists, otherwise fallback to console.log
-        const logFn = console[level as keyof Console] || console.log;
-        logFn(JSON.stringify(logEntry));
+        // Use console[level] if it exists and is a function, otherwise fallback to console.log
+        let logFn: (...data: any[]) => void = console.log;
+        if (level in console && typeof console[level as keyof Console] === 'function') {
+             // eslint-disable-next-line @typescript-eslint/ban-types
+             logFn = console[level as keyof Console] as Function as (...data: any[]) => void;
+        }
+
+        try {
+            logFn(JSON.stringify(logEntry));
+        } catch (stringifyError) {
+            // Fallback if stringify fails (e.g., circular reference)
+            console.error("Failed to stringify log entry, logging raw:", stringifyError, logEntry);
+        }
     }
 
     debug(message: string, context?: LogContext): void {
@@ -73,7 +90,13 @@ export class ConsoleLogger implements Logger {
         // Create a new logger instance with merged context
         return new ConsoleLogger({ ...this.baseContext, ...bindings }, this.minLevel);
     }
+
+    async shutdown(): Promise<void> {
+        // Optional: Log shutdown
+        this.info("ConsoleLogger shutting down");
+        // No specific action needed for console
+    }
 }
 
 /** Default logger instance */
-export const defaultLogger: Logger = new ConsoleLogger(); 
+export const defaultLogger: Logger = new ConsoleLogger();
