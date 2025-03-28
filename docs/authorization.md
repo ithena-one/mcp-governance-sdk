@@ -1,5 +1,9 @@
 # Authorization (RBAC)
 
+**Navigation:**
+* [← Back to Interfaces](./interfaces.md)
+* [Next: Auditing & Logging →](./auditing-logging.md)
+
 The `@ithena/mcp-governance` SDK provides a flexible Role-Based Access Control (RBAC) system integrated into its processing pipeline.
 
 ## Enabling RBAC
@@ -86,4 +90,8 @@ const options: GovernedServerOptions = {
 
 ## Denied Request Auditing
 
-By default (`auditDeniedRequests: true`), even requests denied by RBAC are logged by the `AuditLogStore`. The `AuditRecord.outcome.status` will be `'denied'`, and `AuditRecord.outcome.error` and `AuditRecord.authorization` will contain details about the denial. Set `auditDeniedRequests: false` to suppress these audit logs. 
+By default (`auditDeniedRequests: true`), even requests denied by RBAC are logged by the `AuditLogStore`. The `AuditRecord.outcome.status` will be `'denied'`, and `AuditRecord.outcome.error` and `AuditRecord.authorization` will contain details about the denial. Set `auditDeniedRequests: false` to suppress these audit logs.
+
+**Navigation:**
+* [← Back to Interfaces](./interfaces.md)
+* [Next: Auditing & Logging →](./auditing-logging.md) 

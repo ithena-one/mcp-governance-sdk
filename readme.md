@@ -11,16 +11,16 @@ Build secure, compliant, and observable MCP applications by easily adding **Iden
 
 ---
 
-**📄 Documentation:**
+**📚 Documentation:**
 
-*   **[Getting Started](./docs/getting-started.md)**
-*   **[Core Concepts](./docs/core-concepts.md)**
-*   **[Configuration](./docs/configuration.md)**
-*   **[Interfaces (Extensibility)](./docs/interfaces.md)**
-*   **[Authorization (RBAC)](./docs/authorization.md)**
-*   **[Auditing & Logging](./docs/auditing-logging.md)**
-*   **[Default Implementations](./docs/defaults.md)**
-*   **[Security Considerations](./docs/security.md)**
+*   **[Getting Started](./docs/getting-started.md)** - Quick start guide with a complete example
+*   **[Core Concepts](./docs/core-concepts.md)** - Understanding the SDK's architecture and pipeline
+*   **[Configuration](./docs/configuration.md)** - All available options and their usage
+*   **[Interfaces](./docs/interfaces.md)** - Extensibility points and custom implementations
+*   **[Authorization](./docs/authorization.md)** - RBAC system and permission management
+*   **[Auditing & Logging](./docs/auditing-logging.md)** - Observability and compliance features
+*   **[Default Implementations](./docs/defaults.md)** - Built-in components (development only)
+*   **[Security Considerations](./docs/security.md)** - Security best practices and warnings
 
 ---
 

@@ -1,5 +1,9 @@
 # Auditing and Logging
 
+**Navigation:**
+* [← Back to Authorization](./authorization.md)
+* [Next: Default Implementations →](./defaults.md)
+
 The `@ithena/mcp-governance` SDK provides robust mechanisms for observing the behavior of your MCP server through auditing and structured logging.
 
 ## Auditing
@@ -92,4 +96,8 @@ The SDK facilitates distributed tracing by extracting trace context information.
         *   `GovernedRequestHandlerExtra` / `GovernedNotificationHandlerExtra` (passed to your handlers).
         *   `AuditRecord`.
         *   The request-scoped `Logger`'s context (if the logger supports `child`).
-    *   Use this context to correlate logs and traces across different services. Provide a custom provider if you use a different propagation standard. 
+    *   Use this context to correlate logs and traces across different services. Provide a custom provider if you use a different propagation standard.
+
+**Navigation:**
+* [← Back to Authorization](./authorization.md)
+* [Next: Default Implementations →](./defaults.md) 

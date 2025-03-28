@@ -1,5 +1,9 @@
 # Security Considerations
 
+**Navigation:**
+* [← Back to Default Implementations](./defaults.md)
+* [Back to README →](../README.md)
+
 The `@ithena/mcp-governance` SDK provides a framework for adding security and governance controls, but the overall security of your MCP server heavily depends on how you implement and configure its components. Please review these points carefully.
 
 ## 1. Authentication (`IdentityResolver`)
@@ -54,4 +58,8 @@ The `@ithena/mcp-governance` SDK provides a framework for adding security and go
 
 *   Ensure the underlying MCP transport is secured using appropriate mechanisms like TLS (for SSE/WebSockets/HTTP) or other channel encryption methods, especially when transmitting sensitive data or authentication credentials.
 
-By carefully implementing the governance components and following these security best practices, you can build robust and secure MCP applications using the `@ithena/mcp-governance` SDK. 
+By carefully implementing the governance components and following these security best practices, you can build robust and secure MCP applications using the `@ithena/mcp-governance` SDK.
+
+**Navigation:**
+* [← Back to Default Implementations](./defaults.md)
+* [Back to README →](../README.md) 

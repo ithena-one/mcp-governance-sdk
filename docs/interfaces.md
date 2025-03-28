@@ -1,5 +1,9 @@
 # Interfaces for Extensibility
 
+**Navigation:**
+* [← Back to Configuration](./configuration.md)
+* [Next: Authorization →](./authorization.md)
+
 The `@ithena/mcp-governance` SDK is designed to be pluggable. You integrate it with your existing infrastructure (Identity Providers, Secret Managers, Logging/Auditing systems) by implementing these core interfaces and providing them in the `GovernedServerOptions`.
 
 ## `IdentityResolver`
@@ -97,4 +101,8 @@ The `@ithena/mcp-governance` SDK is designed to be pluggable. You integrate it w
 *   **File:** `src/interfaces/tracing.ts`
 *   **Purpose:** Extracts distributed tracing information (like Trace IDs and Span IDs) from the incoming request context.
 *   **Type:** A function type: `(transportContext: TransportContext, mcpMessage: Request | Notification) => TraceContext | undefined`
-*   **Implementation Notes:** The default implementation (`defaultTraceContextProvider`) handles standard W3C Trace Context headers (`traceparent`, `tracestate`). Provide your own function if you use a different context propagation mechanism (e.g., B3 headers). The returned `TraceContext` is added to `OperationContext` and `AuditRecord`. 
+*   **Implementation Notes:** The default implementation (`defaultTraceContextProvider`) handles standard W3C Trace Context headers (`traceparent`, `tracestate`). Provide your own function if you use a different context propagation mechanism (e.g., B3 headers). The returned `TraceContext` is added to `OperationContext` and `AuditRecord`.
+
+**Navigation:**
+* [← Back to Configuration](./configuration.md)
+* [Next: Authorization →](./authorization.md) 

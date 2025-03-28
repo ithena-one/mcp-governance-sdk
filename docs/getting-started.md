@@ -1,5 +1,9 @@
 # Getting Started with MCP Governance SDK
 
+**Navigation:**
+* [← Back to README](../README.md)
+* [Next: Core Concepts →](./core-concepts.md)
+
 This guide provides a basic example of how to wrap a standard `@modelcontextprotocol/sdk` `Server` with the `@ithena/mcp-governance` SDK to add identity, RBAC, logging, and auditing.
 
 ## Prerequisites
@@ -217,4 +221,8 @@ You should see corresponding log messages and audit records (if using `ConsoleAu
 *   Understand the **[Core Concepts](./core-concepts.md)**.
 *   Review **[Configuration](./configuration.md)** options.
 *   Implement **production-ready** versions of the governance components, especially `IdentityResolver`, `RoleStore`, `PermissionStore`, and potentially `CredentialResolver` and `AuditLogStore`. See the **[Interfaces](./interfaces.md)** documentation.
-*   Review the **[Security Considerations](./security.md)**. 
+*   Review the **[Security Considerations](./security.md)**.
+
+**Navigation:**
+* [← Back to README](../README.md)
+* [Next: Core Concepts →](./core-concepts.md) 

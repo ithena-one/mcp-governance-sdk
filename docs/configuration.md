@@ -1,5 +1,9 @@
 # Configuration Options (`GovernedServerOptions`)
 
+**Navigation:**
+* [← Back to Core Concepts](./core-concepts.md)
+* [Next: Interfaces →](./interfaces.md)
+
 You configure the behavior of the `@ithena/mcp-governance` SDK by passing an options object to the `GovernedServer` constructor.
 
 ```typescript
@@ -43,4 +47,8 @@ Below are the available options:
 
 *   If `enableRbac` is `true`, you **must** provide implementations for `identityResolver`, `roleStore`, and `permissionStore`. Failure to do so will result in an error during `GovernedServer` instantiation.
 *   Effective auditing requires providing an `auditStore` and carefully reviewing/customizing `sanitizeForAudit`.
-*   Replace default in-memory stores and basic resolvers/loggers with production-grade implementations. See **[Defaults](./defaults.md)** and **[Security](./security.md)**. 
+*   Replace default in-memory stores and basic resolvers/loggers with production-grade implementations. See **[Defaults](./defaults.md)** and **[Security](./security.md)**.
+
+**Navigation:**
+* [← Back to Core Concepts](./core-concepts.md)
+* [Next: Interfaces →](./interfaces.md) 

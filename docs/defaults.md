@@ -1,5 +1,9 @@
 # Default Implementations
 
+**Navigation:**
+* [← Back to Auditing & Logging](./auditing-logging.md)
+* [Next: Security Considerations →](./security.md)
+
 The `@ithena/mcp-governance` SDK provides several default implementations for its core interfaces. These are primarily intended for **rapid development, testing, and demonstration purposes.**
 
 **⚠️ IMPORTANT: Most default implementations are NOT suitable for production environments and should be replaced with robust, secure alternatives integrated with your infrastructure.**
@@ -52,4 +56,8 @@ The `@ithena/mcp-governance` SDK provides several default implementations for it
 *   **Interface:** `TraceContextProvider`
 *   **File:** `src/defaults/tracing.ts`
 *   **Behavior:** Extracts trace context information from standard W3C Trace Context HTTP headers (`traceparent`, `tracestate`) found in `transportContext.headers`.
-*   **Production Readiness:** **Yes, if using W3C Trace Context.** If your systems use W3C Trace Context for distributed tracing, this default should work well. If you use a different propagation format (e.g., B3), provide a custom `TraceContextProvider` function. 
+*   **Production Readiness:** **Yes, if using W3C Trace Context.** If your systems use W3C Trace Context for distributed tracing, this default should work well. If you use a different propagation format (e.g., B3), provide a custom `TraceContextProvider` function.
+
+**Navigation:**
+* [← Back to Auditing & Logging](./auditing-logging.md)
+* [Next: Security Considerations →](./security.md) 

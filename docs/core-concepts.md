@@ -1,5 +1,9 @@
 # Core Concepts
 
+**Navigation:**
+* [← Back to Getting Started](./getting-started.md)
+* [Next: Configuration →](./configuration.md)
+
 The `@ithena/mcp-governance` SDK introduces several key concepts built around the base `@modelcontextprotocol/sdk`.
 
 ## 1. `GovernedServer`
@@ -92,4 +96,8 @@ These objects extend the base SDK's `RequestHandlerExtra` and provide the enrich
 This internal component handles the initialization and shutdown of governance components.
 
 *   **Initialization (`initialize()`):** During `GovernedServer.connect()`, it iterates through all configured components (Logger, Stores, Resolvers) and calls their optional `initialize()` method *sequentially*. If any `initialize()` method throws an error, the connection process is aborted, and any already-initialized components have their `shutdown()` method called.
-*   **Shutdown (`shutdown()`):** During `GovernedServer.close()`, it iterates through all *successfully initialized* components and calls their optional `shutdown()` method *in parallel*. Errors during shutdown are logged but do not prevent other components from shutting down or the server from closing. 
+*   **Shutdown (`shutdown()`):** During `GovernedServer.close()`, it iterates through all *successfully initialized* components and calls their optional `shutdown()` method *in parallel*. Errors during shutdown are logged but do not prevent other components from shutting down or the server from closing.
+
+**Navigation:**
+* [← Back to Getting Started](./getting-started.md)
+* [Next: Configuration →](./configuration.md) 
