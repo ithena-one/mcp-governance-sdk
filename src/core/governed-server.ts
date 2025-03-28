@@ -250,13 +250,17 @@ export class GovernedServer {
     /** Registers wrapper functions with the baseServer for all stored handlers. */
     private _registerBaseHandlers(): void {
         this.options.logger.debug("Registering base server handlers for governed methods...");
-        this.requestHandlers.forEach((_handlerInfo, method) => {
+        this.requestHandlers.forEach((handlerInfo, method) => {
             const handler = this._createPipelineRequestHandler(method);
-            this.baseServer.setRequestHandler({ shape: { method: z.literal(method) } } as any, handler as any);
+            // Create a minimal schema for the base server that matches its expected type
+            const baseSchema = z.object({ method: z.literal(method) });
+            this.baseServer.setRequestHandler(baseSchema, handler as any);
         });
-        this.notificationHandlers.forEach((_handlerInfo, method) => {
+        this.notificationHandlers.forEach((handlerInfo, method) => {
             const handler = this._createPipelineNotificationHandler(method);
-            this.baseServer.setNotificationHandler({ shape: { method: z.literal(method) } } as any, handler as any);
+            // Create a minimal schema for the base server that matches its expected type
+            const baseSchema = z.object({ method: z.literal(method) });
+            this.baseServer.setNotificationHandler(baseSchema, handler as any);
         });
         this.options.logger.debug("Base handler registration complete.");
     }
