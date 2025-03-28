@@ -1,57 +1,31 @@
-import { AuditLogStore, AuditRecord } from '../interfaces.js'; // Adjust path
+import { AuditLogStore } from '../interfaces/audit.js';
+import { AuditRecord } from '../types.js';
 
 /**
- * Default AuditLogStore that performs no operations.
- * Use this when auditing is not required or handled externally.
+ * An AuditLogStore that does nothing. Used as the default if no store is provided.
  */
 export class NoOpAuditLogStore implements AuditLogStore {
-    /** Does nothing. */
     async log(_record: AuditRecord): Promise<void> {
-        // No-operation
-        return Promise.resolve();
+        // Do nothing
     }
-    /** Does nothing. */
     async shutdown(): Promise<void> {
-        // No-operation
-        return Promise.resolve();
+        // Do nothing
     }
 }
 
 /**
- * Basic AuditLogStore implementation that logs audit records as
- * structured JSON strings to the console. Suitable for development and debugging.
- * **Not recommended for production environments** due to lack of persistence,
- * searching capabilities, and potential performance impact under load.
+ * An AuditLogStore that logs audit records as JSON to the console.
+ * Suitable for development and debugging.
  */
 export class ConsoleAuditLogStore implements AuditLogStore {
-    /** Logs the audit record to the console as JSON. */
     async log(record: AuditRecord): Promise<void> {
         try {
-            // Prefixing helps filter console output, e.g., `node your_server.js | grep "AUDIT:"`
-            console.log(`AUDIT: ${JSON.stringify(record)}`);
+            console.log(JSON.stringify(record));
         } catch (error) {
-            // Fallback logging in case JSON stringification fails
-            console.error(
-                'AUDIT_ERROR: Failed to stringify audit record for console logging:',
-                error,
-                // Log key fields individually as a fallback
-                {
-                    eventId: record.eventId,
-                    method: record.mcpMethod,
-                    authOutcome: record.authorizationOutcome,
-                    execOutcome: record.executionOutcome,
-                    identityId: typeof record.identity === 'string' ? record.identity : record.identity?.id,
-                    timestamp: record.timestamp
-                }
-            );
+            console.error("Failed to serialize or log audit record:", error, record);
         }
-        // `console.log` is synchronous, but we maintain the async interface
-        return Promise.resolve();
     }
+    // No shutdown needed for console logging
+}
 
-    /** Logs a shutdown message to the console. */
-    async shutdown(): Promise<void> {
-        console.info('ConsoleAuditLogStore shutdown complete.');
-        return Promise.resolve();
-    }
-} 
+export const defaultAuditStore: AuditLogStore = new NoOpAuditLogStore(); 

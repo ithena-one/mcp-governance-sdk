@@ -1,148 +1,79 @@
-import { Logger, LogLevel, TraceContext } from '../interfaces.js'; // Adjust path
-
-// Helper to get log level from environment variable or default
-function getLogLevel(): LogLevel {
-    const envLevel = process.env.MCP_GOVERNANCE_LOG_LEVEL?.toUpperCase();
-    switch (envLevel) {
-        case 'DEBUG':
-            return LogLevel.DEBUG;
-        case 'INFO':
-            return LogLevel.INFO;
-        case 'WARN':
-            return LogLevel.WARN;
-        case 'ERROR':
-            return LogLevel.ERROR;
-        default:
-            return LogLevel.INFO; // Default log level
-    }
-}
+import { Logger, LogLevel, LogContext } from '../interfaces/logger.js';
 
 /**
- * Default logger implementation that writes structured JSON to the console.
- * Supports log levels settable via `MCP_GOVERNANCE_LOG_LEVEL` environment variable
- * (DEBUG, INFO, WARN, ERROR - defaults to INFO).
- * Includes trace context and supports child loggers with merged context.
+ * A simple logger implementation that writes structured JSON to the console.
  */
 export class ConsoleLogger implements Logger {
-    private readonly minLevel: LogLevel;
-    private readonly baseContext: Record<string, any>;
+    private baseContext: LogContext;
+    private minLevel: LogLevel;
 
-    /**
-     * Creates a ConsoleLogger instance.
-     * @param minLevel Minimum log level to output. Defaults to `INFO` or `MCP_GOVERNANCE_LOG_LEVEL` env var.
-     * @param baseContext Optional base context to include in all log entries.
-     */
-    constructor(minLevel?: LogLevel, baseContext: Record<string, any> = {}) {
-        this.minLevel = minLevel ?? getLogLevel();
+    private levelMap: Record<LogLevel, number> = {
+        debug: 10,
+        info: 20,
+        warn: 30,
+        error: 40,
+    };
+
+    constructor(baseContext: LogContext = {}, minLevel: LogLevel = 'info') {
         this.baseContext = baseContext;
+        this.minLevel = minLevel;
     }
 
-    /** Logs a message if its level meets the configured minimum. */
-    log(
-        level: LogLevel,
-        message: string,
-        data?: Record<string, any>,
-        traceContext?: TraceContext
-    ): void {
-        if (level < this.minLevel) {
+    private shouldLog(level: LogLevel): boolean {
+        return this.levelMap[level] >= this.levelMap[this.minLevel];
+    }
+
+    private log(level: LogLevel, message: string, context?: LogContext, error?: Error | unknown): void {
+        if (!this.shouldLog(level)) {
             return;
         }
 
-        const levelString = LogLevel[level]?.toUpperCase() || 'UNKNOWN';
-
         const logEntry: Record<string, any> = {
-            level: levelString,
-            message,
+            level,
             timestamp: new Date().toISOString(),
-            ...this.baseContext, // Include base context from constructor
+            message,
+            ...this.baseContext,
+            ...context,
         };
 
-        // Add trace context if available
-        if (traceContext?.traceId) logEntry.traceId = traceContext.traceId;
-        if (traceContext?.spanId) logEntry.spanId = traceContext.spanId;
-
-        // Merge provided data, ensuring core fields aren't easily overwritten
-        if (data) {
-            for (const key in data) {
-                if (
-                    !['level', 'message', 'timestamp', 'traceId', 'spanId'].includes(key) &&
-                    !(key in this.baseContext) // Allow baseContext to override data
-                ) {
-                    logEntry[key] = data[key];
-                } else if (!(key in this.baseContext)) {
-                    // Only warn if data tries to overwrite a core field *not* already in baseContext
-                    console.warn(`[ConsoleLogger] Attempted to overwrite core log field '${key}' in log data`);
-                }
+        if (error) {
+            if (error instanceof Error) {
+                logEntry.error = {
+                    message: error.message,
+                    name: error.name,
+                    stack: error.stack, // Consider if stack is too verbose for prod
+                };
+            } else {
+                logEntry.error = error;
             }
         }
 
-        const output = JSON.stringify(logEntry);
-
-        // Use appropriate console method
-        switch (level) {
-            case LogLevel.ERROR:
-                console.error(output);
-                break;
-            case LogLevel.WARN:
-                console.warn(output);
-                break;
-            case LogLevel.INFO:
-                console.info(output);
-                break;
-            case LogLevel.DEBUG:
-                // Fallback to console.log if console.debug is not available/visible
-                console.debug ? console.debug(output) : console.log(output);
-                break;
-            default:
-                console.log(output);
-        }
+        // Use console[level] if it exists, otherwise fallback to console.log
+        const logFn = console[level as keyof Console] || console.log;
+        logFn(JSON.stringify(logEntry));
     }
 
-    // --- Convenience Methods ---
-    debug(
-        message: string,
-        data?: Record<string, any>,
-        traceContext?: TraceContext
-    ): void {
-        this.log(LogLevel.DEBUG, message, data, traceContext);
-    }
-    info(
-        message: string,
-        data?: Record<string, any>,
-        traceContext?: TraceContext
-    ): void {
-        this.log(LogLevel.INFO, message, data, traceContext);
-    }
-    warn(
-        message: string,
-        data?: Record<string, any>,
-        traceContext?: TraceContext
-    ): void {
-        this.log(LogLevel.WARN, message, data, traceContext);
-    }
-    error(
-        message: string,
-        error?: Error,
-        data?: Record<string, any>,
-        traceContext?: TraceContext
-    ): void {
-        const errorData: Record<string, any> = {};
-        if (error) {
-             errorData.errorMessage = error.message;
-             errorData.errorName = error.name;
-             // Optionally include error code if it exists (e.g., from McpError)
-             if ((error as any).code !== undefined) {
-                 errorData.errorCode = (error as any).code;
-             }
-             // Avoid including full stack traces in structured logs by default
-             // errorData.errorStack = error.stack;
-        }
-        this.log(LogLevel.ERROR, message, { ...errorData, ...data }, traceContext);
+    debug(message: string, context?: LogContext): void {
+        this.log('debug', message, context);
     }
 
-    /** Creates a child logger instance with additional context merged in. */
-    child(context: Record<string, any>): Logger {
-        const newBaseContext = { ...this.baseContext, ...context };
-        return new ConsoleLogger(this.minLevel, newBaseContext);
+    info(message: string, context?: LogContext): void {
+        this.log('info', message, context);
     }
-} 
+
+    warn(message: string, context?: LogContext): void {
+        this.log('warn', message, context);
+    }
+
+    error(message: string, error?: Error | unknown, context?: LogContext): void {
+        this.log('error', message, context, error);
+    }
+
+    child(bindings: LogContext): Logger {
+        // Create a new logger instance with merged context
+        return new ConsoleLogger({ ...this.baseContext, ...bindings }, this.minLevel);
+    }
+}
+
+/** Default logger instance */
+export const defaultLogger: Logger = new ConsoleLogger(); 

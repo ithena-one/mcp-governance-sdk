@@ -1,9 +1,12 @@
 /** @type {import('ts-jest').JestConfigWithTsJest} */
-module.exports = {
-  preset: 'ts-jest/presets/default-esm', // Use ESM preset
+export default {
+  preset: 'ts-jest/presets/default-esm',
   testEnvironment: 'node',
   moduleNameMapper: {
-    // Handle ESM import paths with .js extension
+    // Force module uuid to resolve with the CJS entry point, because Jest does not support package.json.exports
+    // See https://github.com/uuidjs/uuid/issues/451
+    "uuid": require.resolve('uuid'),
+    // Handle .js extensions in imports
     '^(\\.{1,2}/.*)\\.js$': '$1',
   },
   transform: {
@@ -14,15 +17,12 @@ module.exports = {
       },
     ],
   },
-  extensionsToTreatAsEsm: ['.ts'],
-  // If needed, specify extensions Jest should look for
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
-  // Define roots for Jest to find source and test files
-  roots: ['<rootDir>/src', '<rootDir>/tests'],
-  // Test files matching pattern
-  testMatch: ['**/tests/**/*.test.ts'],
-  // Collect coverage from source files
-  collectCoverageFrom: ['src/**/*.ts'],
-  coverageDirectory: 'coverage',
-  coverageProvider: 'v8', // Or 'babel'
+  extensionsToTreatAsEsm: ['.ts'],
+  testPathIgnorePatterns: ['/node_modules/', '/dist/'],
+  globals: {
+    'ts-jest': {
+      useESM: true,
+    },
+  },
 }; 
