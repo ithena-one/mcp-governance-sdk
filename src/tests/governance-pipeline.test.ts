@@ -278,7 +278,7 @@ describe('GovernancePipeline', () => {
 
         // --- RBAC Tests ---
         describe('when RBAC is enabled', () => {
-            const testPermission = 'tool:call:test/method';
+            const testPermission = 'test:permission';
 
             beforeEach(() => {
                 mockOptions.enableRbac = true;
@@ -466,6 +466,89 @@ describe('GovernancePipeline', () => {
                     authorization: expect.objectContaining({
                         decision: 'granted',
                         roles: roles
+                    })
+                }));
+            });
+
+            it('should map roleStore.getRoles failure to Internal Server Error', async () => {
+                // Arrange
+                const userId = 'user-roles-error';
+                const roleError = new Error('Role store connection failed');
+                mockIdentityResolver.resolveIdentity.mockResolvedValue(userId);
+                mockRoleStore.getRoles.mockRejectedValue(roleError);
+
+                // Act & Assert
+                await expect(pipeline.executeRequestPipeline(mockRequest, mockBaseExtra, mockOperationContext, mockAuditRecord))
+                    .rejects.toThrow(McpError);
+
+                try {
+                    await pipeline.executeRequestPipeline(mockRequest, mockBaseExtra, mockOperationContext, mockAuditRecord);
+                } catch (e: any) {
+                    expect(e.code).toEqual(McpErrorCode.InternalError);
+                    expect(e.message).toBe('MCP error -32603: Error checking permissions');
+                    expect(e.data?.type).toBe('GovernanceError');
+                }
+
+                expect(mockRequestHandler).not.toHaveBeenCalled();
+                expect(mockAuditStore.log).toHaveBeenCalledWith(expect.objectContaining({
+                    outcome: expect.objectContaining({
+                        status: 'failure',
+                        error: expect.objectContaining({
+                            type: 'McpError',
+                            code: McpErrorCode.InternalError,
+                            message: expect.stringContaining('Error checking permissions'),
+                            details: expect.objectContaining({
+                                type: 'GovernanceError',
+                                originalError: roleError
+                            })
+                        })
+                    }),
+                    authorization: expect.objectContaining({
+                        decision: 'denied',
+                        permissionAttempted: testPermission
+                    })
+                }));
+            });
+
+            it('should map permissionStore.hasPermission failure to Internal Server Error', async () => {
+                // Arrange
+                const userId = 'user-permission-error';
+                const permError = new Error('Permission store lookup failed');
+                mockIdentityResolver.resolveIdentity.mockResolvedValue(userId);
+                mockRoleStore.getRoles.mockResolvedValue(['viewer']);
+                mockPermissionStore.hasPermission.mockRejectedValue(permError);
+                mockDerivePermission.mockReturnValue('test:permission');
+
+                // Act & Assert
+                await expect(pipeline.executeRequestPipeline(mockRequest, mockBaseExtra, mockOperationContext, mockAuditRecord))
+                    .rejects.toThrow(McpError);
+
+                try {
+                    await pipeline.executeRequestPipeline(mockRequest, mockBaseExtra, mockOperationContext, mockAuditRecord);
+                } catch (e: any) {
+                    expect(e.code).toEqual(McpErrorCode.InternalError);
+                    expect(e.message).toBe('MCP error -32603: Error checking permissions');
+                    expect(e.data?.type).toBe('GovernanceError');
+                }
+
+                expect(mockRequestHandler).not.toHaveBeenCalled();
+                expect(mockAuditStore.log).toHaveBeenCalledWith(expect.objectContaining({
+                    outcome: expect.objectContaining({
+                        status: 'failure',
+                        error: expect.objectContaining({
+                            type: 'McpError',
+                            code: McpErrorCode.InternalError,
+                            message: expect.stringContaining('Error checking permissions'),
+                            details: expect.objectContaining({
+                                type: 'GovernanceError',
+                                originalError: permError
+                            })
+                        })
+                    }),
+                    authorization: expect.objectContaining({
+                        decision: 'denied',
+                        permissionAttempted: testPermission,
+                        roles: ['viewer']  // The roles were successfully retrieved before the permission check failed
                     })
                 }));
             });
