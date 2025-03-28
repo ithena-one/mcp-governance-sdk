@@ -54,34 +54,34 @@ This SDK provides a standard, pluggable framework that wraps the base `Server` c
 **Request Processing Pipeline:**
 
 ```mermaid
-graph TD
+graph LR
     A[MCP Request In] --> B(Context Setup: EventID, Logger, TraceContext);
     B --> C{IdentityResolver?};
     C -- Yes --> D[Resolve Identity];
     C -- No --> E[Identity = null];
     D --> E;
     E --> F{RBAC Enabled?};
-    F -- No --> K[Credential Resolution Step];
+    F -- No --> K[Credential Resolution];
     F -- Yes --> G{Identity Resolved?};
-    G -- No --> H(DENY: Identity Required);
+    G -- No --> H(DENY: Identity Required);  % Fixed Label H
     G -- Yes --> I[Derive Permission];
     I --> J{Permission Check Needed?};
-    J -- No --> L{Post-Auth Hook?};
+    J -- No (null permission) --> L{Post-Auth Hook?}; % Label clarification
     J -- Yes --> J1[Get Roles];
     J1 --> J2[Check Permissions];
-    J2 -- Denied --> H2(DENY: Insufficient Permission);
-    J2 -- Granted --> L;
+    J2 -- Denied --> H2(DENY: Insufficient Permission); % Fixed Label H2
+    J2 -- Granted --> L;                           % Connect to Post-Auth Hook decision
     L -- Yes --> M[Execute Hook];
     L -- No --> K;
     M --> K;
-    K -- Resolver Exists --> N[Resolve Credentials];
-    K -- No Resolver --> O[Credentials = null/undefined];
-    N -- Error & failOnError=true --> P(FAIL: Credentials Error);
+    K -- Yes (Resolver Exists) --> N[Resolve Credentials]; % Label clarification
+    K -- No --> O[Credentials = null/undefined];
+    N -- Error & failOnError=true --> P(FAIL: Credentials Error); % Fixed Label P
     N -- Error & failOnError=false --> O;
     N -- Success --> O;
     O --> Q[Execute Governed Handler];
     Q -- Success --> R[Result];
-    Q -- Error --> S(FAIL: Handler Error);
+    Q -- Error --> S(FAIL: Handler Error); % Fixed Label S
     R --> T(Send Response);
     S --> T;
     P --> T;
