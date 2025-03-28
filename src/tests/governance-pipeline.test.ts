@@ -624,17 +624,106 @@ describe('GovernancePipeline', () => {
         });
 
         // --- Credential Resolution Tests ---
-        // Note: No changes needed here based on suggestions, tests look correct.
         describe('Credential Resolution', () => {
             const mockCreds: ResolvedCredentials = { apiKey: 'abc' };
-             beforeEach(() => {
-                 mockOptions.identityResolver = mockIdentityResolver;
-                 mockIdentityResolver.resolveIdentity.mockResolvedValue('user-creds');
-                 mockOptions.credentialResolver = mockCredentialResolver;
-             });
-             // ... credential tests from before ...
+            beforeEach(() => {
+                mockOptions.identityResolver = mockIdentityResolver;
+                mockIdentityResolver.resolveIdentity.mockResolvedValue('user-creds');
+                mockOptions.credentialResolver = mockCredentialResolver;
+            });
 
-             it('should fail pipeline if resolution fails and failOnCredentialResolutionError=true', async () => {
+            it('should pass correct identity and context to credential resolver', async () => {
+                // Arrange
+                const userId = 'user-creds';
+                const roles = ['viewer'];
+                mockIdentityResolver.resolveIdentity.mockResolvedValue(userId);
+                mockOptions.enableRbac = true;
+                mockOptions.roleStore = mockRoleStore;
+                mockRoleStore.getRoles.mockResolvedValue(roles);
+                mockCredentialResolver.resolveCredentials.mockResolvedValue(mockCreds);
+                mockDerivePermission.mockReturnValue(null); // No permission needed to simplify test
+
+                // Act
+                await pipeline.executeRequestPipeline(mockRequest, mockBaseExtra, mockOperationContext, mockAuditRecord);
+
+                // Assert
+                expect(mockCredentialResolver.resolveCredentials).toHaveBeenCalledTimes(1);
+                expect(mockCredentialResolver.resolveCredentials).toHaveBeenCalledWith(
+                    userId,
+                    expect.objectContaining({
+                        // Core operation context
+                        eventId: mockOperationContext.eventId,
+                        timestamp: expect.any(Date),
+                        serviceIdentifier: mockOptions.serviceIdentifier,
+                        
+                        // Identity and authorization context
+                        identity: userId,
+                        derivedPermission: null,
+                        
+                        // MCP message
+                        mcpMessage: expect.objectContaining({
+                            jsonrpc: '2.0',
+                            method: testMethod,
+                            params: { data: 'test-data' }
+                        }),
+
+                        // Transport context
+                        transportContext: expect.objectContaining({
+                            transportType: 'test',
+                            sessionId: 'session-123',
+                            headers: {}
+                        }),
+
+                        // Logger
+                        logger: mockLogger
+                    })
+                );
+
+                // Verify credentials were properly added to handler extra
+                expect(mockRequestHandler).toHaveBeenCalledWith(
+                    mockRequest,
+                    expect.objectContaining({
+                        eventId: mockOperationContext.eventId,
+                        identity: userId,
+                        logger: mockLogger,
+                        resolvedCredentials: mockCreds,
+                        roles: undefined,
+                        sessionId: 'session-123',
+                        signal: expect.anything(),
+                        transportContext: expect.objectContaining({
+                            transportType: 'test',
+                            sessionId: 'session-123',
+                            headers: {}
+                        })
+                    })
+                );
+
+                // Verify audit record
+                expect(mockAuditStore.log).toHaveBeenCalledWith(expect.objectContaining({
+                    credentialResolution: {
+                        status: 'success'
+                    },
+                    identity: userId,
+                    authorization: expect.objectContaining({
+                        decision: 'granted',
+                        permissionAttempted: null
+                    }),
+                    eventId: mockOperationContext.eventId,
+                    mcp: expect.objectContaining({
+                        type: 'request',
+                        method: testMethod
+                    }),
+                    outcome: expect.objectContaining({
+                        status: 'success'
+                    }),
+                    transport: expect.objectContaining({
+                        transportType: 'test',
+                        sessionId: 'session-123'
+                    })
+                }));
+            });
+
+            it('should fail pipeline if resolution fails and failOnCredentialResolutionError=true', async () => {
                 const credError = new CredentialResolutionError('Vault fetch failed');
                 mockCredentialResolver.resolveCredentials.mockRejectedValue(credError);
                 mockOptions.failOnCredentialResolutionError = true;
@@ -651,7 +740,7 @@ describe('GovernancePipeline', () => {
                 expect(mockAuditStore.log).toHaveBeenCalledWith(expect.objectContaining({
                     credentialResolution: expect.objectContaining({ status: 'failure', error: expect.anything() })
                 }));
-             });
+            });
         });
 
         // --- Handler Execution and Error Handling ---
