@@ -1,12 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { v4 as uuidv4 } from 'uuid';
 import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { TransportContext } from '../types.js';
-
-/** Generates a unique event ID. */
-export function generateEventId(): string {
-    return uuidv4();
-}
 
 /** Builds the TransportContext from a Transport instance. */
 export function buildTransportContext(transport: Transport | undefined): TransportContext {
@@ -19,7 +13,6 @@ export function buildTransportContext(transport: Transport | undefined): Transpo
         else if (className?.includes('InMemory')) transportType = 'in-memory';
     }
 
-    // Attempt to access potential non-standard properties, default to undefined
     const headers = (transport as any)?.headers;
     const remoteAddress = (transport as any)?.remoteAddress;
 
@@ -30,3 +23,5 @@ export function buildTransportContext(transport: Transport | undefined): Transpo
         remoteAddress: remoteAddress,
     };
 }
+
+// Could add createOperationContext helper here if needed
