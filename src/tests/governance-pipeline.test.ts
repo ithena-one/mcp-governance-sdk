@@ -221,9 +221,50 @@ describe('GovernancePipeline', () => {
             );
             expect(mockAuditStore.log).toHaveBeenCalledTimes(1);
             const auditCall = mockAuditStore.log.mock.calls[0][0] as AuditRecord;
-            expect(auditCall.outcome.status).toBe('success');
-            expect(auditCall.outcome.mcpResponse?.result).toEqual({ success: true });
-            expect(auditCall.identity).toBeNull();
+            
+            // Detailed audit record validation for happy path
+            expect(auditCall).toMatchObject({
+                // Core audit fields
+                eventId: mockOperationContext.eventId,
+                timestamp: expect.any(String),
+                serviceIdentifier: mockOptions.serviceIdentifier,
+                durationMs: expect.any(Number),
+                logged: true,
+
+                // Identity and authorization
+                identity: null,  // No identity resolved
+                authorization: {
+                    decision: 'not_applicable'  // RBAC disabled
+                },
+
+                // Credential resolution
+                credentialResolution: {
+                    status: 'not_configured'  // No credential resolver configured
+                },
+
+                // MCP message details
+                mcp: {
+                    type: 'request',
+                    method: testMethod,
+                    id: mockRequest.id,
+                    params: mockRequest.params
+                },
+
+                // Transport context
+                transport: {
+                    transportType: 'test',
+                    sessionId: 'session-123',
+                    headers: {}
+                },
+
+                // Outcome
+                outcome: {
+                    status: 'success',
+                    mcpResponse: {
+                        result: { success: true }  // Handler result
+                    }
+                }
+            });
         });
 
         it('should resolve identity if resolver is configured', async () => {
@@ -269,11 +310,54 @@ describe('GovernancePipeline', () => {
             expect(mockRequestHandler).not.toHaveBeenCalled();
             expect(mockAuditStore.log).toHaveBeenCalledTimes(1);
             const auditCall = mockAuditStore.log.mock.calls[0][0] as AuditRecord;
-            expect(auditCall.outcome.status).toBe('failure');
-            // Audit log contains the mapped MCP error details
-            expect(auditCall.outcome.error?.type).toBe('McpError');
-            expect(auditCall.outcome.error?.message).toBe('MCP error -32600: Invalid Token');
-            expect(auditCall.outcome.error?.code).toBe(McpErrorCode.InvalidRequest);
+            
+            // Detailed audit record validation for identity resolution failure
+            expect(auditCall).toMatchObject({
+                // Core audit fields
+                eventId: mockOperationContext.eventId,
+                timestamp: expect.any(String),
+                serviceIdentifier: mockOptions.serviceIdentifier,
+                durationMs: expect.any(Number),
+                logged: true,
+
+                // Identity and authorization
+                authorization: {
+                    decision: 'not_applicable'  // RBAC disabled
+                },
+
+                // Credential resolution
+                credentialResolution: {
+                    status: 'not_configured'
+                },
+
+                // MCP message details
+                mcp: {
+                    type: 'request',
+                    method: testMethod,
+                    id: mockRequest.id,
+                    params: mockRequest.params
+                },
+
+                // Transport context
+                transport: {
+                    transportType: 'test',
+                    sessionId: 'session-123',
+                    headers: {}
+                },
+
+                // Outcome - should contain error details
+                outcome: {
+                    status: 'failure',
+                    error: {
+                        type: 'McpError',
+                        code: McpErrorCode.InvalidRequest,
+                        message: 'MCP error -32600: Invalid Token',
+                        details: {
+                            type: 'AuthenticationError'
+                        }
+                    }
+                }
+            });
         });
 
         // --- RBAC Tests ---
@@ -323,10 +407,59 @@ describe('GovernancePipeline', () => {
                  }
                  expect(mockAuditStore.log).toHaveBeenCalledTimes(1);
                  const auditCall = mockAuditStore.log.mock.calls[0][0] as AuditRecord;
-                 expect(auditCall.outcome.status).toBe('denied');
-                 expect(auditCall.authorization?.decision).toBe('denied');
-                 expect(auditCall.authorization?.denialReason).toBe('permission');
-                 expect(auditCall.authorization?.roles).toEqual(['viewer']);
+                 
+                 // Detailed audit record validation for RBAC denial
+                 expect(auditCall).toMatchObject({
+                     // Core audit fields
+                     eventId: mockOperationContext.eventId,
+                     timestamp: expect.any(String),
+                     serviceIdentifier: mockOptions.serviceIdentifier,
+                     durationMs: expect.any(Number),
+                     logged: true,
+
+                     // Identity and authorization - should reflect the permission denial
+                     identity: 'user-noroles',
+                     authorization: {
+                         decision: 'denied',
+                         denialReason: 'permission',
+                         permissionAttempted: testPermission,
+                         roles: ['viewer']  // The roles that were checked
+                     },
+
+                     // Credential resolution - not attempted due to RBAC denial
+                     credentialResolution: {
+                         status: 'not_configured'
+                     },
+
+                     // MCP message details
+                     mcp: {
+                         type: 'request',
+                         method: testMethod,
+                         id: mockRequest.id,
+                         params: mockRequest.params
+                     },
+
+                     // Transport context
+                     transport: {
+                         transportType: 'test',
+                         sessionId: 'session-123',
+                         headers: {}
+                     },
+
+                     // Outcome - should contain authorization error details
+                     outcome: {
+                         status: 'denied',
+                         error: {
+                             type: 'McpError',
+                             code: -32001,  // Authorization error code
+                             message: expect.stringContaining(testPermission),
+                             details: {
+                                 type: 'AuthorizationError',
+                                 reason: 'permission'
+                             }
+                         }
+                     }
+                 });
              });
 
             it('should succeed if user has a role granting permission', async () => {
@@ -906,6 +1039,94 @@ describe('GovernancePipeline', () => {
              })
              expect(mockAuditStore.log).toHaveBeenCalledWith(sanitizedRecord);
          });
+
+        it('should properly sanitize sensitive data in request params and handler result', async () => {
+            // Import the real defaultSanitizeForAudit
+            const { defaultSanitizeForAudit } = await import('../defaults/sanitization.js');
+            
+            // Arrange
+            // 1. Configure request with sensitive data
+            const requestWithSensitiveData = {
+                ...mockRequest,
+                params: {
+                    data: 'normal data',
+                    apiKey: 'super-secret-key-123',
+                    config: {
+                        password: 'secret-pass',
+                        normal: 'value'
+                    },
+                    headers: {
+                        'Authorization': 'Bearer xyz.123.abc'
+                    }
+                }
+            };
+
+            // 2. Configure handler to return sensitive data
+            const handlerResultWithSensitiveData = {
+                success: true,
+                sessionToken: 'session-xyz-789',
+                data: {
+                    userKey: 'user-secret-key',
+                    normal: 'value'
+                }
+            };
+            mockRequestHandler.mockResolvedValue(handlerResultWithSensitiveData);
+
+            // 3. Use the real defaultSanitizeForAudit
+            mockOptions.sanitizeForAudit = defaultSanitizeForAudit;
+            pipeline = new GovernancePipeline(
+                mockOptions,
+                mockRequestHandlers as any,
+                mockNotificationHandlers as any
+            );
+
+            // 4. Update operation context with sensitive request
+            Object.assign(mockOperationContext, { mcpMessage: requestWithSensitiveData });
+
+            // Act
+            await pipeline.executeRequestPipeline(requestWithSensitiveData, mockBaseExtra, mockOperationContext, mockAuditRecord);
+
+            // Assert
+            expect(mockAuditStore.log).toHaveBeenCalledTimes(1);
+            const auditCall = mockAuditStore.log.mock.calls[0][0] as AuditRecord;
+
+            // Check that sensitive data was masked in request params
+            expect(auditCall.mcp.params).toEqual({
+                data: 'normal data',
+                apiKey: '***MASKED***',
+                config: {
+                    password: '***MASKED***',
+                    normal: 'value'
+                },
+                headers: {
+                    'Authorization': 'Bearer ***MASKED***'
+                }
+            });
+
+            // Check that sensitive data was masked in handler result
+            expect(auditCall.outcome.mcpResponse?.result).toEqual({
+                success: true,
+                sessionToken: '***MASKED***',
+                data: {
+                    userKey: '***MASKED***',
+                    normal: 'value'
+                }
+            });
+
+            // Verify other audit record fields are present and correct
+            expect(auditCall).toMatchObject({
+                eventId: mockOperationContext.eventId,
+                timestamp: expect.any(String),
+                serviceIdentifier: mockOptions.serviceIdentifier,
+                transport: expect.objectContaining({
+                    transportType: 'test',
+                    sessionId: 'session-123'
+                }),
+                outcome: expect.objectContaining({
+                    status: 'success'
+                })
+            });
+        });
 
         // ... audit failure tests from before ...
 

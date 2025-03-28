@@ -144,9 +144,18 @@ export class GovernancePipeline {
                         // Check roles sequentially and stop on first grant
                         let hasPermission = false;
                         for (const role of roles) {
-                            if (await this.options.permissionStore!.hasPermission(role, derivedPermission!, operationContext)) {
-                                hasPermission = true;
-                                break; // Stop checking once we find a role that grants permission
+                            try {
+                                if (await this.options.permissionStore!.hasPermission(role, derivedPermission!, operationContext)) {
+                                    hasPermission = true;
+                                    break; // Stop checking once we find a role that grants permission
+                                }
+                            } catch (err) {
+                                // Wrap permission store errors in GovernanceError
+                                const govError = new GovernanceError("Error checking permissions", { originalError: err });
+                                throw new McpError(McpErrorCode.InternalError, govError.message, {
+                                    type: 'GovernanceError',
+                                    originalError: err
+                                });
                             }
                         }
 
@@ -161,7 +170,10 @@ export class GovernancePipeline {
                         auditRecord.authorization!.decision = 'granted';
                         logger.debug("Authorization granted", { permission: derivedPermission, roles });
                     } catch (err) {
+                        // If it's already an McpError (from permission checks or previous wrapping), rethrow
                         if (err instanceof McpError) throw err;
+                        
+                        // Otherwise wrap in GovernanceError and map to McpError
                         const govError = new GovernanceError("Error checking permissions", { originalError: err });
                         throw new McpError(McpErrorCode.InternalError, govError.message, {
                             type: 'GovernanceError',
