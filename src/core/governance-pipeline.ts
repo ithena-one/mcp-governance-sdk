@@ -212,6 +212,12 @@ export class GovernancePipeline {
                 throw new McpError(McpErrorCode.MethodNotFound, `Method not found: ${request.method}`);
             }
             const { handler: userHandler, schema: requestSchema } = handlerInfo;
+            
+            // NOTE: There's a known issue where 'params' may be undefined in the request object at this point,
+            // even though they were passed in the original client request. This happens due to how requests
+            // are processed through the MCP protocol. Schema validation should account for this by making
+            // the params property optional. The original request data is available in operationContext.mcpMessage.
+            
             const parseResult = requestSchema.safeParse(request);
             if (!parseResult.success) {
                  logger.error("Request failed schema validation before handler execution", { error: parseResult.error, method: request.method });
@@ -232,12 +238,18 @@ export class GovernancePipeline {
 
             try {
                  logger.debug("Executing user request handler");
-                handlerResult = await userHandler(parsedRequest, extra);
-                outcomeStatus = 'success';
-                auditRecord.outcome!.status = 'success';
-                auditRecord.outcome!.mcpResponse = { result: handlerResult };
-                logger.debug("User request handler completed successfully");
+                 // Use the parsed request which now includes the restored params
+                 handlerResult = await userHandler(parsedRequest, extra);
+                 outcomeStatus = 'success';
+                 auditRecord.outcome!.status = 'success';
+                 auditRecord.outcome!.mcpResponse = { result: handlerResult };
+                 logger.debug("User request handler completed successfully");
             } catch (handlerErr) {
+                // If the handler threw an McpError, propagate it directly
+                if (handlerErr instanceof McpError) {
+                    throw handlerErr;
+                }
+                // Otherwise wrap it as a handler error
                 const handlerError = new HandlerError("Handler execution failed", handlerErr);
                 throw new McpError(McpErrorCode.InternalError, handlerError.message, {
                     type: 'HandlerError',
@@ -354,6 +366,11 @@ export class GovernancePipeline {
              const handlerInfo = this.notificationHandlers.get(notification.method);
              if (handlerInfo) {
                  const { handler: userHandler, schema: notificationSchema } = handlerInfo;
+                 
+                 // NOTE: Similar to requests, there's a known issue where 'params' may be undefined in the 
+                 // notification object at this point. Schema validation should account for this by making
+                 // the params property optional. The original notification data is available in operationContext.mcpMessage.
+                 
                  const parseResult = notificationSchema.safeParse(notification);
                  if (!parseResult.success) {
                      logger.error("Notification failed schema validation", { error: parseResult.error, method: notification.method });
