@@ -372,103 +372,103 @@ describe('GovernancePipeline', () => {
                  expect(mockAuditStore.log).not.toHaveBeenCalled();
              });
 
-             it('should fail if user has no roles (identity resolved but no roles)', async () => {
-                 // Arrange
-                 mockIdentityResolver.resolveIdentity.mockResolvedValue('user-noroles');
-                 mockRoleStore.getRoles.mockResolvedValue([]); // Empty roles array
+            it('should fail if user has no roles (identity resolved but no roles)', async () => {
+                // Arrange
+                mockIdentityResolver.resolveIdentity.mockResolvedValue('user-noroles');
+                mockRoleStore.getRoles.mockResolvedValue([]); // Empty roles array
 
-                 // Act & Assert
-                 await expect(pipeline.executeRequestPipeline(mockRequest, mockBaseExtra, mockOperationContext, mockAuditRecord))
-                     .rejects.toThrow(McpError);
+                // Act & Assert
+                const promise = pipeline.executeRequestPipeline(mockRequest, mockBaseExtra, mockOperationContext, mockAuditRecord);
+                await expect(promise).rejects.toThrow(McpError);
+                
+                try {
+                    await promise;
+                } catch (e: any) {
+                    expect(e.code).toEqual(-32001); // AuthZ error code
+                    expect(e.data?.type).toBe('AuthorizationError');
+                    expect(e.data?.reason).toBe('permission');
+                }
 
-                 try {
-                     await pipeline.executeRequestPipeline(mockRequest, mockBaseExtra, mockOperationContext, mockAuditRecord);
-                 } catch (e: any) {
-                     expect(e.code).toEqual(-32001); // AuthZ error code
-                     expect(e.data?.type).toBe('AuthorizationError');
-                     expect(e.data?.reason).toBe('permission');
-                 }
+                expect(mockIdentityResolver.resolveIdentity).toHaveBeenCalledTimes(1);
+                expect(mockRoleStore.getRoles).toHaveBeenCalledTimes(1);
+                expect(mockPermissionStore.hasPermission).not.toHaveBeenCalled(); // Should not check permissions if no roles
+                expect(mockRequestHandler).not.toHaveBeenCalled();
+                expect(mockAuditStore.log).toHaveBeenCalledWith(expect.objectContaining({
+                    authorization: expect.objectContaining({
+                        decision: 'denied',
+                        denialReason: 'permission',
+                        roles: [] // Empty roles array should be recorded
+                    })
+                }));
+            });
 
-                 expect(mockIdentityResolver.resolveIdentity).toHaveBeenCalledTimes(1);
-                 expect(mockRoleStore.getRoles).toHaveBeenCalledTimes(1);
-                 expect(mockPermissionStore.hasPermission).not.toHaveBeenCalled(); // Should not check permissions if no roles
-                 expect(mockRequestHandler).not.toHaveBeenCalled();
-                 expect(mockAuditStore.log).toHaveBeenCalledWith(expect.objectContaining({
-                     authorization: expect.objectContaining({
-                         decision: 'denied',
-                         denialReason: 'permission',
-                         roles: [] // Empty roles array should be recorded
-                     })
-                 }));
-             });
+            it('should fail with identity reason if identityResolver returns null with RBAC enabled', async () => {
+                // Arrange
+                mockIdentityResolver.resolveIdentity.mockResolvedValue(null);
 
-             it('should fail with identity reason if identityResolver returns null with RBAC enabled', async () => {
-                 // Arrange
-                 mockIdentityResolver.resolveIdentity.mockResolvedValue(null);
+                // Act & Assert
+                const promise = pipeline.executeRequestPipeline(mockRequest, mockBaseExtra, mockOperationContext, mockAuditRecord);
+                await expect(promise).rejects.toThrow(McpError);
 
-                 // Act & Assert
-                 await expect(pipeline.executeRequestPipeline(mockRequest, mockBaseExtra, mockOperationContext, mockAuditRecord))
-                     .rejects.toThrow(McpError);
+                try {
+                    await promise;
+                } catch (e: any) {
+                    expect(e.code).toEqual(-32001);
+                    expect(e.data?.type).toBe('AuthorizationError');
+                    expect(e.data?.reason).toBe('identity');
+                }
 
-                 try {
-                     await pipeline.executeRequestPipeline(mockRequest, mockBaseExtra, mockOperationContext, mockAuditRecord);
-                 } catch (e: any) {
-                     expect(e.code).toEqual(-32001);
-                     expect(e.data?.type).toBe('AuthorizationError');
-                     expect(e.data?.reason).toBe('identity');
-                 }
+                expect(mockIdentityResolver.resolveIdentity).toHaveBeenCalledTimes(1);
+                expect(mockRoleStore.getRoles).not.toHaveBeenCalled(); // Should not call roleStore if no identity
+                expect(mockPermissionStore.hasPermission).not.toHaveBeenCalled();
+                expect(mockRequestHandler).not.toHaveBeenCalled();
+                expect(mockAuditStore.log).toHaveBeenCalledWith(expect.objectContaining({
+                    authorization: expect.objectContaining({
+                        decision: 'denied',
+                        denialReason: 'identity'
+                    })
+                }));
+            });
 
-                 expect(mockIdentityResolver.resolveIdentity).toHaveBeenCalledTimes(1);
-                 expect(mockRoleStore.getRoles).not.toHaveBeenCalled(); // Should not call roleStore if no identity
-                 expect(mockPermissionStore.hasPermission).not.toHaveBeenCalled();
-                 expect(mockRequestHandler).not.toHaveBeenCalled();
-                 expect(mockAuditStore.log).toHaveBeenCalledWith(expect.objectContaining({
-                     authorization: expect.objectContaining({
-                         decision: 'denied',
-                         denialReason: 'identity'
-                     })
-                 }));
-             });
+            it('should stop checking permissions after first role grants access', async () => {
+                // Arrange
+                const userId = 'user-multirole';
+                const roles = ['viewer', 'editor', 'admin'];
+                mockIdentityResolver.resolveIdentity.mockResolvedValue(userId);
+                mockRoleStore.getRoles.mockResolvedValue(roles);
+                mockPermissionStore.hasPermission
+                    .mockImplementation(async (role) => {
+                        // Only editor role grants permission
+                        return role === 'editor';
+                    });
 
-             it('should stop checking permissions after first role grants access', async () => {
-                 // Arrange
-                 const userId = 'user-multirole';
-                 const roles = ['viewer', 'editor', 'admin'];
-                 mockIdentityResolver.resolveIdentity.mockResolvedValue(userId);
-                 mockRoleStore.getRoles.mockResolvedValue(roles);
-                 mockPermissionStore.hasPermission
-                     .mockImplementation(async (role) => {
-                         // Only editor role grants permission
-                         return role === 'editor';
-                     });
+                // Act
+                const result = await pipeline.executeRequestPipeline(mockRequest, mockBaseExtra, mockOperationContext, mockAuditRecord);
 
-                 // Act
-                 const result = await pipeline.executeRequestPipeline(mockRequest, mockBaseExtra, mockOperationContext, mockAuditRecord);
-
-                 // Assert
-                 expect(result).toEqual({ success: true });
-                 expect(mockIdentityResolver.resolveIdentity).toHaveBeenCalledTimes(1);
-                 expect(mockRoleStore.getRoles).toHaveBeenCalledTimes(1);
-                 
-                 // Should have checked viewer (false) and editor (true), but not admin
-                 expect(mockPermissionStore.hasPermission).toHaveBeenCalledTimes(2);
-                 expect(mockPermissionStore.hasPermission).toHaveBeenNthCalledWith(1, 'viewer', testPermission, expect.anything());
-                 expect(mockPermissionStore.hasPermission).toHaveBeenNthCalledWith(2, 'editor', testPermission, expect.anything());
-                 
-                 expect(mockRequestHandler).toHaveBeenCalledWith(
-                     expect.anything(),
-                     expect.objectContaining({
-                         identity: userId,
-                         roles: roles
-                     })
-                 );
-                 expect(mockAuditStore.log).toHaveBeenCalledWith(expect.objectContaining({
-                     authorization: expect.objectContaining({
-                         decision: 'granted',
-                         roles: roles
-                     })
-                 }));
-             });
+                // Assert
+                expect(result).toEqual({ success: true });
+                expect(mockIdentityResolver.resolveIdentity).toHaveBeenCalledTimes(1);
+                expect(mockRoleStore.getRoles).toHaveBeenCalledTimes(1);
+                
+                // Should have checked viewer (false) and editor (true), but not admin
+                expect(mockPermissionStore.hasPermission).toHaveBeenCalledTimes(2);
+                expect(mockPermissionStore.hasPermission).toHaveBeenNthCalledWith(1, 'viewer', testPermission, expect.anything());
+                expect(mockPermissionStore.hasPermission).toHaveBeenNthCalledWith(2, 'editor', testPermission, expect.anything());
+                
+                expect(mockRequestHandler).toHaveBeenCalledWith(
+                    expect.anything(),
+                    expect.objectContaining({
+                        identity: userId,
+                        roles: roles
+                    })
+                );
+                expect(mockAuditStore.log).toHaveBeenCalledWith(expect.objectContaining({
+                    authorization: expect.objectContaining({
+                        decision: 'granted',
+                        roles: roles
+                    })
+                }));
+            });
 
         }); // End RBAC describe
 

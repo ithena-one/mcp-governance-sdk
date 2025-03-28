@@ -130,13 +130,26 @@ export class GovernancePipeline {
                         roles = await this.options.roleStore.getRoles(identity, operationContext);
                         operationContext.roles = roles;
                         auditRecord.authorization!.roles = roles;
-                        let hasPermission = false;
-                        if (roles && roles.length > 0) {
-                            const checks = await Promise.all(roles.map(role => 
-                                this.options.permissionStore!.hasPermission(role, derivedPermission!, operationContext)
-                            ));
-                            hasPermission = checks.some(allowed => allowed);
+                        
+                        // Early check for empty roles array
+                        if (!roles || roles.length === 0) {
+                            auditRecord.authorization!.denialReason = 'permission';
+                            const authzError = new AuthorizationError('permission', `No roles assigned to check permission: ${derivedPermission}`);
+                            throw new McpError(-32001, authzError.message, {
+                                type: 'AuthorizationError',
+                                reason: 'permission'
+                            });
                         }
+
+                        // Check roles sequentially and stop on first grant
+                        let hasPermission = false;
+                        for (const role of roles) {
+                            if (await this.options.permissionStore!.hasPermission(role, derivedPermission!, operationContext)) {
+                                hasPermission = true;
+                                break; // Stop checking once we find a role that grants permission
+                            }
+                        }
+
                         if (!hasPermission) {
                             auditRecord.authorization!.denialReason = 'permission';
                             const authzError = new AuthorizationError('permission', `Missing required permission: ${derivedPermission}`);
