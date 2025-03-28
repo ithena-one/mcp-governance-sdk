@@ -83,6 +83,8 @@ export interface OperationContext {
     derivedPermission?: string | null;
     /** Roles associated with the resolved identity (if RBAC is enabled). */
     roles?: string[];
+    /** Credentials resolved by the CredentialResolver (if configured). */
+    resolvedCredentials?: ResolvedCredentials | null;
 }
 
 /**

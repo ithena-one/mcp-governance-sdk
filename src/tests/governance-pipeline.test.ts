@@ -473,42 +473,155 @@ describe('GovernancePipeline', () => {
         }); // End RBAC describe
 
         // --- Post-Authorization Hook ---
-        // Note: No changes needed here based on suggestions, tests look correct.
         describe('Post-Authorization Hook', () => {
-             const userId = 'user-hook';
-             beforeEach(() => {
-                  mockOptions.identityResolver = mockIdentityResolver;
-                  mockIdentityResolver.resolveIdentity.mockResolvedValue(userId);
-                  mockOptions.postAuthorizationHook = mockPostAuthHook;
-                  mockOptions.enableRbac = false; // Assume RBAC passed/disabled for simplicity
-              });
+            const userId = 'user-hook';
+            beforeEach(() => {
+                mockOptions.identityResolver = mockIdentityResolver;
+                mockIdentityResolver.resolveIdentity.mockResolvedValue(userId);
+                mockOptions.postAuthorizationHook = mockPostAuthHook;
+                mockOptions.enableRbac = false; // Default to RBAC disabled
+            });
 
-              it('should call post-auth hook after successful identity/auth', async () => {
-                  await pipeline.executeRequestPipeline(mockRequest, mockBaseExtra, mockOperationContext, mockAuditRecord);
-                  expect(mockPostAuthHook).toHaveBeenCalledWith(userId, mockOperationContext);
-                  expect(mockRequestHandler).toHaveBeenCalled();
-              });
+            it('should call post-auth hook after successful identity resolution when RBAC is off', async () => {
+                await pipeline.executeRequestPipeline(mockRequest, mockBaseExtra, mockOperationContext, mockAuditRecord);
+                expect(mockPostAuthHook).toHaveBeenCalledWith(userId, mockOperationContext);
+                expect(mockRequestHandler).toHaveBeenCalled();
+                expect(mockAuditStore.log).toHaveBeenCalledWith(expect.objectContaining({
+                    outcome: expect.objectContaining({ status: 'success' })
+                }));
+            });
 
-               it('should fail pipeline if post-auth hook rejects', async () => {
-                   const hookError = new Error("Hook failed");
-                   mockPostAuthHook.mockRejectedValue(hookError);
+            it('should call post-auth hook after successful RBAC check', async () => {
+                // Arrange
+                mockOptions.enableRbac = true;
+                mockOptions.roleStore = mockRoleStore;
+                mockOptions.permissionStore = mockPermissionStore;
+                const roles = ['admin'];
+                mockRoleStore.getRoles.mockResolvedValue(roles);
+                mockPermissionStore.hasPermission.mockResolvedValue(true);
+                mockDerivePermission.mockReturnValue('test:permission');
 
-                   await expect(pipeline.executeRequestPipeline(mockRequest, mockBaseExtra, mockOperationContext, mockAuditRecord))
-                       .rejects.toThrow(McpError);
-                   try {
-                       await pipeline.executeRequestPipeline(mockRequest, mockBaseExtra, mockOperationContext, mockAuditRecord);
-                   } catch(e: any) {
-                       expect(e.message).toContain("Post-authorization hook failed");
-                       expect(e.code).toEqual(McpErrorCode.InternalError);
-                   }
-                   expect(mockRequestHandler).not.toHaveBeenCalled();
-                   expect(mockAuditStore.log).toHaveBeenCalledWith(expect.objectContaining({
-                       outcome: expect.objectContaining({ status: 'failure', error: expect.objectContaining({ type: 'McpError', message: expect.stringContaining('Post-authorization hook failed') })})
-                   }));
-               });
-                // ... other post-auth hook tests from before ...
+                // Act
+                await pipeline.executeRequestPipeline(mockRequest, mockBaseExtra, mockOperationContext, mockAuditRecord);
+
+                // Assert
+                expect(mockPostAuthHook).toHaveBeenCalledWith(userId, expect.objectContaining({
+                    roles: roles
+                }));
+                expect(mockRequestHandler).toHaveBeenCalled();
+                expect(mockAuditStore.log).toHaveBeenCalledWith(expect.objectContaining({
+                    authorization: expect.objectContaining({
+                        decision: 'granted'
+                    })
+                }));
+            });
+
+            it('should call post-auth hook when RBAC is enabled but no permission is required', async () => {
+                // Arrange
+                mockOptions.enableRbac = true;
+                mockOptions.roleStore = mockRoleStore;
+                mockOptions.permissionStore = mockPermissionStore;
+                mockDerivePermission.mockReturnValue(null); // No permission required
+
+                // Act
+                await pipeline.executeRequestPipeline(mockRequest, mockBaseExtra, mockOperationContext, mockAuditRecord);
+
+                // Assert
+                expect(mockPostAuthHook).toHaveBeenCalledWith(userId, mockOperationContext);
+                expect(mockRoleStore.getRoles).not.toHaveBeenCalled(); // No roles needed
+                expect(mockPermissionStore.hasPermission).not.toHaveBeenCalled();
+                expect(mockRequestHandler).toHaveBeenCalled();
+            });
+
+            it('should not call post-auth hook if identity resolution fails', async () => {
+                // Arrange
+                const authError = new AuthenticationError('Invalid token');
+                mockIdentityResolver.resolveIdentity.mockRejectedValue(authError);
+
+                // Act & Assert
+                await expect(pipeline.executeRequestPipeline(mockRequest, mockBaseExtra, mockOperationContext, mockAuditRecord))
+                    .rejects.toThrow(McpError);
+
+                expect(mockPostAuthHook).not.toHaveBeenCalled();
+                expect(mockRequestHandler).not.toHaveBeenCalled();
+                expect(mockAuditStore.log).toHaveBeenCalledWith(expect.objectContaining({
+                    outcome: expect.objectContaining({ 
+                        status: 'failure',
+                        error: expect.objectContaining({ type: 'McpError' })
+                    })
+                }));
+            });
+
+            it('should not call post-auth hook if RBAC denies access', async () => {
+                // Arrange
+                mockOptions.enableRbac = true;
+                mockOptions.roleStore = mockRoleStore;
+                mockOptions.permissionStore = mockPermissionStore;
+                mockRoleStore.getRoles.mockResolvedValue(['viewer']);
+                mockPermissionStore.hasPermission.mockResolvedValue(false);
+                mockDerivePermission.mockReturnValue('test:permission');
+
+                // Act & Assert
+                await expect(pipeline.executeRequestPipeline(mockRequest, mockBaseExtra, mockOperationContext, mockAuditRecord))
+                    .rejects.toThrow(McpError);
+
+                expect(mockPostAuthHook).not.toHaveBeenCalled();
+                expect(mockRequestHandler).not.toHaveBeenCalled();
+                expect(mockAuditStore.log).toHaveBeenCalledWith(expect.objectContaining({
+                    authorization: expect.objectContaining({
+                        decision: 'denied',
+                        denialReason: 'permission'
+                    })
+                }));
+            });
+
+            it('should fail pipeline if post-auth hook rejects', async () => {
+                // Arrange
+                const hookError = new Error("Hook failed");
+                mockPostAuthHook.mockRejectedValue(hookError);
+
+                // Act & Assert
+                const promise = pipeline.executeRequestPipeline(mockRequest, mockBaseExtra, mockOperationContext, mockAuditRecord);
+                await expect(promise).rejects.toThrow(McpError);
+
+                try {
+                    await promise;
+                } catch (e: any) {
+                    expect(e.message).toContain("Post-authorization hook failed");
+                    expect(e.code).toEqual(McpErrorCode.InternalError);
+                    expect(e.data?.type).toBe('GovernanceError');
+                }
+
+                expect(mockRequestHandler).not.toHaveBeenCalled();
+                expect(mockAuditStore.log).toHaveBeenCalledWith(expect.objectContaining({
+                    outcome: expect.objectContaining({ 
+                        status: 'failure',
+                        error: expect.objectContaining({ 
+                            type: 'McpError',
+                            message: expect.stringContaining('Post-authorization hook failed')
+                        })
+                    })
+                }));
+            });
+
+            it('should include resolved credentials in operation context passed to hook', async () => {
+                // Arrange
+                const mockCreds = { apiKey: 'test-key' };
+                mockOptions.credentialResolver = mockCredentialResolver;
+                mockCredentialResolver.resolveCredentials.mockResolvedValue(mockCreds);
+
+                // Act
+                await pipeline.executeRequestPipeline(mockRequest, mockBaseExtra, mockOperationContext, mockAuditRecord);
+
+                // Assert
+                expect(mockPostAuthHook).toHaveBeenCalledWith(
+                    userId,
+                    expect.objectContaining({
+                        resolvedCredentials: mockCreds
+                    })
+                );
+            });
         });
-
 
         // --- Credential Resolution Tests ---
         // Note: No changes needed here based on suggestions, tests look correct.

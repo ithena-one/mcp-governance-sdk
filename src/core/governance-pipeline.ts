@@ -171,26 +171,12 @@ export class GovernancePipeline {
                 }
             }
 
-            // 4. Post-Authorization Hook
-            if (this.options.postAuthorizationHook && identity &&
-                (auditRecord.authorization!.decision === 'granted' || auditRecord.authorization!.decision === 'not_applicable')) {
-                try {
-                    logger.debug("Executing post-authorization hook");
-                    await this.options.postAuthorizationHook(identity, operationContext);
-                } catch (err) {
-                    const govError = new GovernanceError("Post-authorization hook failed", { originalError: err });
-                    throw new McpError(McpErrorCode.InternalError, govError.message, {
-                        type: 'GovernanceError',
-                        originalError: err
-                    });
-                }
-            }
-
-            // 5. Credentials
+            // 4. Credentials
             if (this.options.credentialResolver) {
                 try {
                     logger.debug("Resolving credentials");
                     resolvedCredentials = await this.options.credentialResolver.resolveCredentials(identity ?? null, operationContext);
+                    operationContext.resolvedCredentials = resolvedCredentials; // Add to operation context
                     auditRecord.credentialResolution = { status: 'success' };
                     logger.debug("Credentials resolution successful");
                 } catch (err) {
@@ -216,6 +202,21 @@ export class GovernancePipeline {
                 }
             } else {
                 logger.debug("No credential resolver configured");
+            }
+
+            // 5. Post-Authorization Hook
+            if (this.options.postAuthorizationHook && identity &&
+                (auditRecord.authorization!.decision === 'granted' || auditRecord.authorization!.decision === 'not_applicable')) {
+                try {
+                    logger.debug("Executing post-authorization hook");
+                    await this.options.postAuthorizationHook(identity, operationContext);
+                } catch (err) {
+                    const govError = new GovernanceError("Post-authorization hook failed", { originalError: err });
+                    throw new McpError(McpErrorCode.InternalError, govError.message, {
+                        type: 'GovernanceError',
+                        originalError: err
+                    });
+                }
             }
 
             // 6. Execute User Handler
