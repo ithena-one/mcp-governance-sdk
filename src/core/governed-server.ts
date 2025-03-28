@@ -295,8 +295,8 @@ export class GovernedServer {
                 // Wrap in a promise to handle potential errors during the call itself
                 return Promise.resolve()
                     .then(() => component.shutdown!()) // Call shutdown
-                    .then(() => ({ status: 'fulfilled', componentName }))
-                    .catch(err => ({ status: 'rejected', reason: err, componentName })); // Capture errors
+                    .then(() => ({ status: 'fulfilled' as const, componentName }))
+                    .catch(err => ({ status: 'rejected' as const, reason: err, componentName })); // Capture errors
             });
 
         // Await all shutdown attempts
@@ -304,8 +304,8 @@ export class GovernedServer {
 
         // Log outcomes
         results.forEach(result => {
-            if (result.status === 'rejected') {
-                logger.error(`Error during ${result.componentName}.shutdown()`, result.reason);
+            if (result.status === 'rejected' && 'reason' in result) {
+                logger.error(`Error during ${result.componentName}.shutdown()`, { error: result.reason });
             } else {
                 logger.debug(`${result.componentName} shut down successfully.`);
             }
@@ -640,7 +640,7 @@ export class GovernedServer {
          } catch (pipelineErr) {
              pipelineError = pipelineErr;
              outcomeStatus = (pipelineErr instanceof AuthorizationError) ? 'denied' : 'failure';
-             requestLogger.warn(`Governance pipeline failed for request ${request.id}`, pipelineErr);
+             requestLogger.warn(`Governance pipeline failed for request ${request.id}`, { error: pipelineErr });
              // Error mapped later
          } finally {
               // --- 7/8. Build Audit Record & Outcome ---
@@ -752,7 +752,7 @@ export class GovernedServer {
                      auditRecord.identity = identity;
                      notificationLogger.debug("Identity resolved for notification", { identity });
                  } catch (err) {
-                     notificationLogger.warn("Identity resolution failed during notification processing", err);
+                     notificationLogger.warn("Identity resolution failed during notification processing", { error: err });
                      // Don't fail pipeline for identity error on notification
                  }
              }
@@ -809,7 +809,7 @@ export class GovernedServer {
                  mcp: { ...auditRecord.mcp, params: notification.params },
                  outcome: {
                      status: outcomeStatus,
-                     ...(handlerError && { error: this._mapErrorToAuditPayload(handlerError) })
+                     ...(handlerError ? { error: this._mapErrorToAuditPayload(handlerError) } : {})
                  }
             };
 

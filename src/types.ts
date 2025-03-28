@@ -32,7 +32,7 @@ export type ResolvedCredentials = Record<string, string | object | any>;
  */
 export interface TransportContext {
     /** Type of transport (e.g., 'stdio', 'sse', 'websocket'). */
-    transportType: Transport['__type'] | string;
+    transportType: string;
     /** Incoming headers, relevant for HTTP-based transports. */
     headers?: Record<string, string | string[] | undefined>;
     /** Client IP address, if available. */
