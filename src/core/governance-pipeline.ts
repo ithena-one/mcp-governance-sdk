@@ -9,7 +9,6 @@ import {
     Result,
     ErrorCode as McpErrorCode,
     McpError,
-    Request, // Import Request type
 } from '@modelcontextprotocol/sdk/types.js';
 import { RequestHandlerExtra as BaseRequestHandlerExtra } from '@modelcontextprotocol/sdk/shared/protocol.js';
 
@@ -18,11 +17,9 @@ import {
     UserIdentity, ResolvedCredentials, TransportContext, OperationContext,
     GovernedRequestHandlerExtra, GovernedNotificationHandlerExtra, AuditRecord
 } from '../types.js';
-import { GovernedServerOptions } from './governed-server.js'; // Assuming type is exported from governed-server
+import { GovernedServerOptions } from './governed-server.js'; 
 import { AuthenticationError, AuthorizationError, CredentialResolutionError, HandlerError, GovernanceError } from '../errors/index.js';
-// Removed unused Logger import: import { Logger } from '../interfaces/logger.js';
-import { mapErrorToPayload, mapErrorToAuditPayload } from '../utils/error-mapper.js';
-import { buildAuditOutcome } from '../utils/audit-helpers.js';
+import { mapErrorToAuditPayload } from '../utils/error-mapper.js';
 
 // Re-define handler map types locally or import if exported
 type AnyRequestSchema = ZodObject<{ method: ZodLiteral<string>; [key: string]: ZodTypeAny }>;
@@ -31,6 +28,12 @@ type InferRequest<T extends AnyRequestSchema> = z.infer<T>;
 type InferNotification<T extends AnyNotificationSchema> = z.infer<T>;
 type RequestHandlerMap = Map<string, { handler: (req: any, extra: GovernedRequestHandlerExtra) => Promise<Result>, schema: AnyRequestSchema }>;
 type NotificationHandlerMap = Map<string, { handler: (notif: any, extra: GovernedNotificationHandlerExtra) => Promise<void>, schema: AnyNotificationSchema }>;
+
+interface ErrorData {
+    type?: string;
+    reason?: string;
+    originalError?: unknown;
+}
 
 /**
  * Contains the logic for executing the governance pipeline for requests and notifications.
@@ -54,16 +57,15 @@ export class GovernancePipeline {
     /** Executes the governance pipeline for a request. */
     async executeRequestPipeline(
         request: JSONRPCRequest,
-        baseExtra: BaseRequestHandlerExtra, // Includes signal, sessionId from base Server
-        operationContext: OperationContext, // Pre-built context (eventId, transport, trace, logger...)
-        auditRecord: Partial<AuditRecord> // Pre-built audit record base
+        baseExtra: BaseRequestHandlerExtra,
+        operationContext: OperationContext,
+        auditRecord: Partial<AuditRecord>
     ): Promise<Result> {
         const logger = operationContext.logger;
-        const startTime = operationContext.timestamp.getTime(); // Get start time from context
+        const startTime = operationContext.timestamp.getTime();
         let outcomeStatus: AuditRecord['outcome']['status'] = 'failure';
         let pipelineError: Error | unknown | null = null;
         let handlerResult: Result | undefined = undefined;
-        let finalErrorPayload: JSONRPCError['error'] | undefined = undefined;
 
         try {
             logger.debug("Executing request pipeline steps...");
@@ -71,7 +73,12 @@ export class GovernancePipeline {
             let identity: UserIdentity | null = null;
             let roles: string[] | undefined = undefined;
             let derivedPermission: string | null = null;
-            let resolvedCredentials: ResolvedCredentials | null | undefined = null;
+            let resolvedCredentials: ResolvedCredentials | null | undefined = undefined;
+
+            // Initialize audit record structure
+            auditRecord.outcome = { status: 'failure' };
+            auditRecord.authorization = { decision: 'not_applicable' };
+            auditRecord.credentialResolution = { status: 'not_configured' };
 
             // 2. Identity Resolution
             if (this.options.identityResolver) {
@@ -79,101 +86,123 @@ export class GovernancePipeline {
                     identity = await this.options.identityResolver.resolveIdentity(operationContext);
                     operationContext.identity = identity;
                     auditRecord.identity = identity;
-                    // Avoid logging raw identity object by default, consider structured logging context
                     logger.debug("Identity resolved", { hasIdentity: !!identity });
                 } catch (err) {
                     logger.error("Identity resolution failed", { error: err });
-                    if (err instanceof GovernanceError) throw err;
-                    throw new AuthenticationError("Identity resolution failed", err);
+                    const authError = err instanceof Error 
+                        ? new AuthenticationError(err.message)
+                        : new AuthenticationError("Identity resolution failed");
+                    throw new McpError(McpErrorCode.InvalidRequest, authError.message, {
+                        type: 'AuthenticationError',
+                        originalError: err
+                    });
                 }
             } else {
                  logger.debug("No identity resolver configured");
             }
 
             // 3. RBAC
-            const authzResult: AuditRecord['authorization'] = { decision: 'not_applicable' };
-            auditRecord.authorization = authzResult;
             if (this.options.enableRbac) {
-                authzResult.decision = 'denied';
+                auditRecord.authorization!.decision = 'denied';
                 if (identity === null) {
-                    authzResult.denialReason = 'identity';
-                    throw new AuthorizationError('identity', "Identity required for authorization but none was resolved.");
+                    auditRecord.authorization!.denialReason = 'identity';
+                    const authzError = new AuthorizationError('identity', "Identity required for authorization but none was resolved.");
+                    throw new McpError(-32001, authzError.message, {
+                        type: 'AuthorizationError',
+                        reason: 'identity'
+                    });
                 }
                 if (!this.options.roleStore || !this.options.permissionStore) {
-                    // This should be caught by GovernedServer constructor, but defensive check
-                    throw new GovernanceError("RBAC enabled but RoleStore or PermissionStore is missing.");
+                    const govError = new GovernanceError("RBAC enabled but RoleStore or PermissionStore is missing.");
+                    throw new McpError(McpErrorCode.InternalError, govError.message, {
+                        type: 'GovernanceError'
+                    });
                 }
-                // Safely handle derivePermission call with optional chaining
-                derivedPermission = this.options.derivePermission?.(operationContext.mcpMessage, operationContext.transportContext) ?? null;
+                derivedPermission = this.options.derivePermission?.(request, operationContext.transportContext) ?? null;
                 operationContext.derivedPermission = derivedPermission;
-                authzResult.permissionAttempted = derivedPermission;
+                auditRecord.authorization!.permissionAttempted = derivedPermission;
 
                 if (derivedPermission === null) {
-                    authzResult.decision = 'granted';
+                    auditRecord.authorization!.decision = 'granted';
                     logger.debug("Permission check not applicable (null permission derived)");
                 } else {
                     try {
-                        // Ensure roleStore and permissionStore are accessed safely if optional in options type
                         roles = await this.options.roleStore.getRoles(identity, operationContext);
                         operationContext.roles = roles;
-                        authzResult.roles = roles;
+                        auditRecord.authorization!.roles = roles;
                         let hasPermission = false;
                         if (roles && roles.length > 0) {
-                            const checks = await Promise.all(roles.map(role => this.options.permissionStore!.hasPermission(role, derivedPermission!, operationContext)));
-                            hasPermission = checks.some((allowed: boolean) => allowed);
+                            const checks = await Promise.all(roles.map(role => 
+                                this.options.permissionStore!.hasPermission(role, derivedPermission!, operationContext)
+                            ));
+                            hasPermission = checks.some(allowed => allowed);
                         }
                         if (!hasPermission) {
-                            authzResult.denialReason = 'permission';
-                            throw new AuthorizationError('permission', `Missing required permission: ${derivedPermission}`);
+                            auditRecord.authorization!.denialReason = 'permission';
+                            const authzError = new AuthorizationError('permission', `Missing required permission: ${derivedPermission}`);
+                            throw new McpError(-32001, authzError.message, {
+                                type: 'AuthorizationError',
+                                reason: 'permission'
+                            });
                         }
-                        authzResult.decision = 'granted';
+                        auditRecord.authorization!.decision = 'granted';
                         logger.debug("Authorization granted", { permission: derivedPermission, roles });
                     } catch (err) {
-                        logger.error("Error during role/permission check", { error: err });
-                        if (err instanceof AuthorizationError) throw err;
-                        if (err instanceof GovernanceError) throw err;
-                        throw new GovernanceError("Error checking permissions", err);
+                        if (err instanceof McpError) throw err;
+                        const govError = new GovernanceError("Error checking permissions", { originalError: err });
+                        throw new McpError(McpErrorCode.InternalError, govError.message, {
+                            type: 'GovernanceError',
+                            originalError: err
+                        });
                     }
                 }
             }
 
             // 4. Post-Authorization Hook
             if (this.options.postAuthorizationHook && identity &&
-                (authzResult.decision === 'granted' || authzResult.decision === 'not_applicable')) {
+                (auditRecord.authorization!.decision === 'granted' || auditRecord.authorization!.decision === 'not_applicable')) {
                 try {
                     logger.debug("Executing post-authorization hook");
-                    // Check if postAuthorizationHook is defined before calling
                     await this.options.postAuthorizationHook(identity, operationContext);
                 } catch (err) {
-                    logger.error("Post-authorization hook failed", { error: err });
-                    if (err instanceof GovernanceError) throw err;
-                    throw new GovernanceError("Post-authorization hook failed", err);
+                    const govError = new GovernanceError("Post-authorization hook failed", { originalError: err });
+                    throw new McpError(McpErrorCode.InternalError, govError.message, {
+                        type: 'GovernanceError',
+                        originalError: err
+                    });
                 }
             }
 
             // 5. Credentials
-            const credResult: AuditRecord['credentialResolution'] = { status: 'not_configured' };
-            auditRecord.credentialResolution = credResult;
             if (this.options.credentialResolver) {
                 try {
                     logger.debug("Resolving credentials");
-                    // Check if credentialResolver is defined before calling
                     resolvedCredentials = await this.options.credentialResolver.resolveCredentials(identity ?? null, operationContext);
-                    credResult.status = 'success';
-                    logger.debug("Credentials resolution successful"); // Changed log message slightly
+                    auditRecord.credentialResolution = { status: 'success' };
+                    logger.debug("Credentials resolution successful");
                 } catch (err) {
-                    credResult.status = 'failure';
-                    credResult.error = { message: err instanceof Error ? err.message : String(err), type: err?.constructor?.name };
+                    auditRecord.credentialResolution = {
+                        status: 'failure',
+                        error: { 
+                            message: err instanceof Error ? err.message : String(err), 
+                            type: err?.constructor?.name 
+                        }
+                    };
                     logger.error("Credential resolution failed", { error: err });
                     if (this.options.failOnCredentialResolutionError) {
-                        if (err instanceof GovernanceError) throw err;
-                        throw new CredentialResolutionError("Credential resolution failed", err);
+                        const credError = err instanceof Error 
+                            ? new CredentialResolutionError(err.message)
+                            : new CredentialResolutionError("Credential resolution failed");
+                        throw new McpError(McpErrorCode.InternalError, credError.message, {
+                            type: 'CredentialResolutionError',
+                            originalError: err
+                        });
                     } else {
                         logger.warn("Credential resolution failed, but proceeding as failOnCredentialResolutionError=false");
                     }
                 }
             } else {
-                 logger.debug("No credential resolver configured");
+                logger.debug("No credential resolver configured");
             }
 
             // 6. Execute User Handler
@@ -190,14 +219,13 @@ export class GovernancePipeline {
             }
             const parsedRequest = parseResult.data;
             const extra: GovernedRequestHandlerExtra = {
-                // Spread baseExtra carefully - ensure types align if modified
                 signal: baseExtra.signal,
                 sessionId: baseExtra.sessionId,
                 eventId: operationContext.eventId,
                 logger: operationContext.logger,
                 identity: identity ?? null,
                 roles: roles,
-                resolvedCredentials: resolvedCredentials,
+                resolvedCredentials: resolvedCredentials ?? undefined,
                 traceContext: operationContext.traceContext,
                 transportContext: operationContext.transportContext,
             };
@@ -206,70 +234,90 @@ export class GovernancePipeline {
                  logger.debug("Executing user request handler");
                 handlerResult = await userHandler(parsedRequest, extra);
                 outcomeStatus = 'success';
+                auditRecord.outcome!.status = 'success';
+                auditRecord.outcome!.mcpResponse = { result: handlerResult };
                 logger.debug("User request handler completed successfully");
             } catch (handlerErr) {
-                pipelineError = new HandlerError("User handler execution failed", handlerErr); // Wrap handler error
-                outcomeStatus = 'failure';
-                logger.error("User handler execution failed", { error: handlerErr });
+                const handlerError = new HandlerError("Handler execution failed", handlerErr);
+                throw new McpError(McpErrorCode.InternalError, handlerError.message, {
+                    type: 'HandlerError',
+                    originalError: handlerErr
+                });
             }
+
+            return handlerResult;
 
         } catch (pipeErr) {
             pipelineError = pipeErr;
-            outcomeStatus = (pipeErr instanceof AuthorizationError) ? 'denied' : 'failure';
-             // Log pipeline errors with more context
-            logger.warn(`Governance pipeline step failed for request ${request.id}`, { error: pipeErr, eventId: operationContext?.eventId });
+            if (pipeErr instanceof AuthorizationError) {
+                outcomeStatus = 'denied';
+            } else if (pipeErr instanceof AuthenticationError || 
+                       pipeErr instanceof CredentialResolutionError ||
+                       pipeErr instanceof HandlerError ||
+                       pipeErr instanceof GovernanceError) {
+                outcomeStatus = 'failure';
+            } else if (pipeErr instanceof McpError) {
+                const errorData = pipeErr.data as ErrorData | undefined;
+                outcomeStatus = (errorData?.type === 'AuthorizationError') ? 'denied' : 'failure';
+            } else {
+                outcomeStatus = 'failure';
+            }
+            auditRecord.outcome!.status = outcomeStatus;
+            throw pipeErr;
         } finally {
-             // --- Build Audit Record Outcome ---
-             const endTime = Date.now();
-             // Ensure startTime is available - it should be from operationContext
-             const durationMs = endTime - (operationContext?.timestamp.getTime() ?? startTime); // Fallback to outer startTime if context creation failed
-             auditRecord.timestamp = new Date(endTime).toISOString();
-             auditRecord.durationMs = durationMs;
+            // --- Build Audit Record Outcome ---
+            const endTime = Date.now();
+            const durationMs = endTime - startTime;
+            auditRecord.timestamp = new Date(endTime).toISOString();
+            auditRecord.durationMs = durationMs;
 
-             let responseForAudit: JSONRPCResponse | JSONRPCError | null = null;
-             if (outcomeStatus === 'success' && handlerResult !== undefined) {
-                 responseForAudit = { jsonrpc: "2.0", id: request.id, result: handlerResult };
-             } else if (pipelineError) {
-                 finalErrorPayload = mapErrorToPayload(pipelineError, McpErrorCode.InternalError, "Pipeline error");
-                 responseForAudit = { jsonrpc: "2.0", id: request.id, error: finalErrorPayload };
-             }
+            if (pipelineError) {
+                auditRecord.outcome!.error = mapErrorToAuditPayload(pipelineError);
+            }
 
-             // Add potentially missing fields (like mcp.params) before audit logging
-             const finalAuditRecord = {
-                ...auditRecord,
-                // Ensure mcp is an object before spreading
-                mcp: { ...(auditRecord.mcp || { type: 'request', method: request.method, id: request.id }), params: request.params },
-                outcome: buildAuditOutcome(outcomeStatus, pipelineError, responseForAudit)
-             };
+            // Ensure MCP fields are present
+            auditRecord.mcp = { 
+                type: 'request' as const,
+                method: request.method,
+                id: request.id,
+                params: request.params 
+            };
 
-             // --- Auditing ---
-             const shouldAudit = outcomeStatus !== 'denied' || this.options.auditDeniedRequests;
-             if (shouldAudit) {
-                 try {
-                     // Ensure sanitizeForAudit exists before calling
-                     const sanitizedRecord = this.options.sanitizeForAudit?.(finalAuditRecord as AuditRecord);
-                     logger.debug("Logging audit record", { eventId: finalAuditRecord.eventId });
-                     // Ensure auditStore exists before logging
-                     this.options.auditStore?.log(sanitizedRecord as AuditRecord)?.catch((auditErr: any) => {
-                          logger.error("Audit logging failed", { error: auditErr, auditEventId: finalAuditRecord.eventId });
-                     });
-                 } catch (sanitizeErr) {
-                     logger.error("Audit record sanitization failed", { error: sanitizeErr, auditEventId: finalAuditRecord.eventId });
-                     console.error(`!!! FAILED TO SANITIZE AUDIT RECORD ${finalAuditRecord.eventId} !!!`, finalAuditRecord, sanitizeErr);
-                 }
-             } else {
-                 logger.debug("Skipping audit log based on configuration", { eventId: finalAuditRecord.eventId, outcome: outcomeStatus });
-             }
-        }
-
-        // --- Return Result or Throw Mapped Error ---
-        if (outcomeStatus === 'success' && handlerResult !== undefined) {
-            return handlerResult;
-        } else {
-             if (!finalErrorPayload) { // Should have been built in finally
-                 finalErrorPayload = mapErrorToPayload(pipelineError ?? new Error("Unknown processing error"), McpErrorCode.InternalError, "Unknown error");
-             }
-            throw new McpError(finalErrorPayload.code, finalErrorPayload.message, finalErrorPayload.data);
+            // --- Auditing ---
+            const shouldAudit = outcomeStatus !== 'denied' || this.options.auditDeniedRequests;
+            if (shouldAudit && this.options.auditStore && !auditRecord.logged) {
+                // At this point, auditRecord should have all required fields
+                const baseRecord = auditRecord as AuditRecord;
+                let sanitizedRecord: AuditRecord = baseRecord;
+                let sanitizationSucceeded = true;
+                
+                // Try to sanitize the record if a sanitizer is configured
+                if (this.options.sanitizeForAudit) {
+                    try {
+                        const sanitized = this.options.sanitizeForAudit(baseRecord);
+                        if (sanitized) {
+                            sanitizedRecord = sanitized as AuditRecord;
+                        }
+                    } catch (sanitizeErr) {
+                        sanitizationSucceeded = false;
+                        logger.error("Audit record sanitization failed", { error: sanitizeErr, auditEventId: baseRecord.eventId });
+                        console.error(`!!! FAILED TO SANITIZE AUDIT RECORD ${baseRecord.eventId} !!!`, baseRecord, sanitizeErr);
+                    }
+                }
+                
+                // Log the record (sanitized or original) if sanitization succeeded or no sanitizer configured
+                if (sanitizationSucceeded || !this.options.sanitizeForAudit) {
+                    logger.debug("Logging audit record", { eventId: baseRecord.eventId });
+                    try {
+                        await this.options.auditStore.log(sanitizedRecord);
+                        auditRecord.logged = true;
+                    } catch (auditErr) {
+                        logger.error("Audit logging failed", { error: auditErr, auditEventId: baseRecord.eventId });
+                    }
+                }
+            } else {
+                logger.debug("Skipping audit log based on configuration", { eventId: auditRecord.eventId, outcome: outcomeStatus });
+            }
         }
     }
 

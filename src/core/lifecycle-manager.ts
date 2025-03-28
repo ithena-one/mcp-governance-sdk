@@ -5,7 +5,7 @@ import { CredentialResolver } from '../interfaces/credentials.js';
 import { AuditLogStore } from '../interfaces/audit.js';
 
 // Type alias for components with potential lifecycle methods
-type LifecycleComponent =
+export type LifecycleComponent =
     | IdentityResolver
     | RoleStore
     | PermissionStore
@@ -23,8 +23,10 @@ export class LifecycleManager {
 
     constructor(logger: Logger, components: Array<LifecycleComponent | undefined>) {
         this.logger = logger;
-        // Filter out undefined components and assert the type
-        this.components = components.filter((c): c is LifecycleComponent => c !== undefined);
+        // Filter out undefined components and those without lifecycle methods
+        this.components = components.filter((c): c is LifecycleComponent => 
+            c !== undefined && (('initialize' in c) || ('shutdown' in c))
+        );
     }
 
     /**
@@ -43,7 +45,7 @@ export class LifecycleManager {
             }
 
             if (component.initialize) {
-                const componentName = component.constructor?.name || 'Unnamed Component';
+                const componentName = ('name' in component) ? component.name : component.constructor?.name || 'Unnamed Component';
                 try {
                     this.logger.debug(`Initializing ${componentName}...`);
                     await component.initialize();
@@ -74,7 +76,7 @@ export class LifecycleManager {
         const shutdownPromises = this.initializedComponents
             .filter(component => component.shutdown)
             .map(component => {
-                const componentName = component.constructor?.name || 'Unnamed Component';
+                const componentName = ('name' in component) ? component.name : component.constructor?.name || 'Unnamed Component';
                 this.logger.debug(`Calling shutdown for ${componentName}...`);
                 return Promise.resolve()
                     .then(() => component.shutdown!())
