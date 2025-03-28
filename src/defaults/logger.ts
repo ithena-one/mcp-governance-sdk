@@ -2,6 +2,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Logger, LogLevel, LogContext } from '../interfaces/logger.js';
 
+type ConsoleMethod = (message?: any, ...args: any[]) => void;
+
 /**
  * A simple logger implementation that writes structured JSON to the console.
  */
@@ -30,6 +32,30 @@ export class ConsoleLogger implements Logger {
         return this.levelMap[level] >= this.levelMap[this.minLevel];
     }
 
+    private getConsoleMethod(level: LogLevel): ConsoleMethod {
+        let method: ConsoleMethod;
+        switch (level) {
+            case 'debug':
+                method = typeof console.debug === 'function' ? console.debug : console.log;
+                break;
+            case 'info':
+                method = typeof console.info === 'function' ? console.info : console.log;
+                break;
+            case 'warn':
+                method = typeof console.warn === 'function' ? console.warn : console.log;
+                break;
+            case 'error':
+                method = typeof console.error === 'function' ? console.error : console.log;
+                break;
+            default:
+                method = console.log;
+        }
+        if (typeof method !== 'function') {
+            method = console.log;
+        }
+        return method.bind(console);
+    }
+
     private log(level: LogLevel, message: string, context?: LogContext, error?: Error | unknown): void {
         if (!this.shouldLog(level)) {
             return;
@@ -48,22 +74,18 @@ export class ConsoleLogger implements Logger {
                 logEntry.error = {
                     message: error.message,
                     name: error.name,
-                    stack: error.stack, // Consider if stack is too verbose for prod
+                    stack: error.stack,
                 };
             } else {
-                logEntry.error = error; // Log non-Error types as is
+                logEntry.error = error;
             }
         }
 
-        // Use console[level] if it exists and is a function, otherwise fallback to console.log
-        let logFn: (...data: any[]) => void = console.log;
-        if (level in console && typeof console[level as keyof Console] === 'function') {
-             // eslint-disable-next-line @typescript-eslint/ban-types
-             logFn = console[level as keyof Console] as Function as (...data: any[]) => void;
-        }
+        const jsonString = JSON.stringify(logEntry);
+        const consoleMethod = this.getConsoleMethod(level);
 
         try {
-            logFn(JSON.stringify(logEntry));
+            consoleMethod(jsonString);
         } catch (stringifyError) {
             // Fallback if stringify fails (e.g., circular reference)
             console.error("Failed to stringify log entry, logging raw:", stringifyError, logEntry);

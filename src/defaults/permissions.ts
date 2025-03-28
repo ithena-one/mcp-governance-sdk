@@ -1,6 +1,7 @@
-import { Request, TransportContext } from '@modelcontextprotocol/sdk';
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { PermissionStore, RoleStore } from '../interfaces/rbac.js';
-import { UserIdentity, OperationContext } from '../types.js';
+import { UserIdentity, OperationContext, TransportContext } from '../types.js';
+import { Request } from '@modelcontextprotocol/sdk/types.js';
 
 /**
  * Derives a permission string based on the MCP method and parameters.
@@ -57,11 +58,12 @@ export function defaultDerivePermission(
             return 'roots:list';
 
         // Completion
-        case 'completion/complete':
+        case 'completion/complete': {
             const ref = params?.ref as any;
             if (ref?.type === 'ref/prompt') return `completion:prompt:${ref.name}:${params?.argument?.name ?? '*'}`;
             if (ref?.type === 'ref/resource') return `completion:resource:${ref.uri}:${params?.argument?.name ?? '*'}`;
             return 'completion:complete';
+        }
 
         // Logging (Client -> Server)
         case 'logging/setLevel':

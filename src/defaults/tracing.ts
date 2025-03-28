@@ -1,6 +1,6 @@
 import { TraceContextProvider } from '../interfaces/tracing.js';
 import { TraceContext, TransportContext } from '../types.js';
-import { Request, Notification } from '@modelcontextprotocol/sdk';
+import { Request, Notification } from '@modelcontextprotocol/sdk/types.js';
 
 const W3C_TRACEPARENT_HEADER = 'traceparent';
 const W3C_TRACESTATE_HEADER = 'tracestate';
