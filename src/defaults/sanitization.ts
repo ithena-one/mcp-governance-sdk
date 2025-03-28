@@ -1,70 +1,136 @@
+// src/defaults/sanitization.ts
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { AuditRecord } from '../types.js';
 
-// Basic regex patterns for common secrets (adjust as needed for robustness)
-const SECRET_PATTERNS = [
-    /([a-z0-9]{_})?(key|token|secret|password|auth|credential)[a-z0-9_]*\s*[:=]\s*['"]?([a-zA-Z0-9_\-.~!*'();:@&=+$,/?%#[\]]+)['"]?/gi, // key=value, key: value
-    /"(key|token|secret|password|auth|credential)":\s*"([^"]+)"/gi, // "key": "value"
-    /Bearer\s+([a-zA-Z0-9_\-.~+/]+=*)/gi, // Bearer token
-    /api[_-]?key/i, // Common key names
-    /secret[_-]?key/i,
+// Patterns for field *keys* that strongly indicate sensitive data.
+const SECRET_KEY_PATTERNS = [
+    /(api[_-]?key|webhook[_-]?key)$/i,  // Ends with api_key, apiKey, webhook_key, webhookKey
+    /(secret[_-]?key|user[_-]?key)$/i,  // Ends with secret_key, secretKey, user_key, userKey
+    /secret$/i,             // Ends with secret
+    /password$/i,           // Ends with password
+    /token$/i,              // Ends with token
+    /(credential|principal)s?$/i, // Ends with credential(s) or principal(s)
+    /^private[_-]?key$/i,    // Exact match for private_key / privateKey
+    /^client[_-]?secret$/i,  // Exact match
+    /^auth[_-]?token$/i,     // Exact match
 ];
-const MASK_STRING = '***MASKED***';
-const MAX_STRING_LENGTH = 1024; // Max length before truncating values
 
-function sanitizeValue(value: any): any {
-    if (typeof value === 'string') {
-        let sanitized = value;
-        for (const pattern of SECRET_PATTERNS) {
-            // Reset lastIndex for global regexes
-            pattern.lastIndex = 0;
-            sanitized = sanitized.replace(pattern, (match, _p1, _p2, p3) => {
-                // Try to replace only the value part if capture groups are present
-                if (p3) return match.replace(p3, MASK_STRING);
-                // Otherwise, mask the whole match (less precise but safer)
-                return MASK_STRING;
-            });
+// Keywords that indicate sensitive data when part of a field name
+const SENSITIVE_KEY_PARTS = [
+    'key', 'secret', 'token', 'password', 'credential'
+];
+
+const MASK_STRING = '***MASKED***';
+const MAX_STRING_LENGTH = 1024;
+
+// Non-sensitive terms that might contain sensitive keywords
+const NON_SENSITIVE_TERMS = new Set([
+    'tokenizer', 'keyboard', 'passthrough', 'secretariat', 'keystone',
+    'authorization', 'authentication', 'author', 'authenticated',
+    'custom-auth', 'auth_method', 'auth-method'
+]);
+
+/** Checks if a field key indicates sensitive data. */
+function isSecretKey(key: string): boolean {
+    const lowerKey = key.toLowerCase();
+
+    // 1. Check non-sensitive terms first
+    if (NON_SENSITIVE_TERMS.has(lowerKey)) {
+        return false;
+    }
+
+    // 2. Check specific patterns
+    if (SECRET_KEY_PATTERNS.some(pattern => pattern.test(key))) {
+        return true;
+    }
+
+    // 3. Check for sensitive parts in compound words
+    // Only match if the sensitive part is a complete word
+    const parts = key.split(/[_-]|(?=[A-Z])/).map(p => p.toLowerCase());
+    return parts.some(part => 
+        SENSITIVE_KEY_PARTS.includes(part) && 
+        // Ensure it's not part of a larger word
+        parts.every(otherPart => 
+            otherPart === part || 
+            !otherPart.includes(part)
+        )
+    );
+}
+
+/** Recursively checks if an object contains any sensitive keys. */
+function containsSecretKey(obj: any): boolean {
+    if (typeof obj !== 'object' || obj === null) return false;
+
+    return Object.keys(obj).some(key => {
+        // Skip checking known safe keys
+        if (NON_SENSITIVE_TERMS.has(key.toLowerCase())) {
+            return false;
         }
-        // Simple check for Bearer tokens if not caught by regex
-        if (sanitized.toLowerCase().startsWith('bearer ')) {
-            sanitized = `Bearer ${MASK_STRING}`;
+
+        if (isSecretKey(key)) return true;
+        const value = obj[key];
+        if (typeof value === 'object' && value !== null) {
+            return containsSecretKey(value);
+        }
+        return false;
+    });
+}
+
+function sanitizeValue(value: any, key?: string): any {
+    // 1. Handle null/undefined
+    if (value === null || value === undefined) {
+        return value;
+    }
+
+    // 2. Handle non-string primitives
+    if (typeof value !== 'object' && typeof value !== 'string') {
+        return value;
+    }
+
+    // 3. Handle strings
+    if (typeof value === 'string') {
+        // Check if key indicates sensitive data
+        if (key && isSecretKey(key)) {
+            return value === '' ? '' : MASK_STRING;
+        }
+
+        // Special handling for Bearer tokens
+        const bearerMatch = value.match(/^Bearer\s+(.+)$/i);
+        if (bearerMatch && bearerMatch[1]) {
+            return `Bearer ${MASK_STRING}`;
         }
 
         // Truncate long strings
-        if (sanitized.length > MAX_STRING_LENGTH) {
-            return sanitized.substring(0, MAX_STRING_LENGTH) + '...[TRUNCATED]';
+        if (value.length > MAX_STRING_LENGTH) {
+            return value.substring(0, MAX_STRING_LENGTH) + '...[TRUNCATED]';
         }
-        return sanitized;
-    } else if (Array.isArray(value)) {
-        return value.map(sanitizeValue);
-    } else if (value !== null && typeof value === 'object') {
-        const sanitizedObj: Record<string, any> = {};
-        for (const key in value) {
-            if (Object.prototype.hasOwnProperty.call(value, key)) {
-                // Also sanitize keys that look like secrets
-                const lowerKey = key.toLowerCase();
-                if (SECRET_PATTERNS.some(p => p.test(lowerKey))) {
-                    sanitizedObj[key] = MASK_STRING;
-                } else {
-                    sanitizedObj[key] = sanitizeValue(value[key]);
-                }
-            }
-        }
-        return sanitizedObj;
+
+        return value;
     }
-    return value; // Return primitives and null/undefined as is
+
+    // 4. Handle arrays
+    if (Array.isArray(value)) {
+        return value.map(item => sanitizeValue(item));
+    }
+
+    // 5. Handle objects
+    const sanitizedObj: Record<string, any> = {};
+    for (const k in value) {
+        if (Object.prototype.hasOwnProperty.call(value, k)) {
+            sanitizedObj[k] = sanitizeValue(value[k], k);
+        }
+    }
+    return sanitizedObj;
 }
 
 /**
  * Default function to sanitize sensitive information from an AuditRecord
  * before logging. Masks common secret patterns and truncates long strings.
- * This is a basic implementation and may need enhancement for specific needs.
- * @param record - The partial or complete audit record.
- * @returns A sanitized version of the audit record.
  */
 export function defaultSanitizeForAudit(record: Partial<AuditRecord>): Partial<AuditRecord> {
     const sanitized: Partial<AuditRecord> = { ...record };
 
-    // Sanitize Headers (common place for Authorization tokens)
+    // Sanitize Headers
     if (sanitized.transport?.headers) {
         sanitized.transport.headers = sanitizeValue(sanitized.transport.headers);
     }
@@ -74,14 +140,22 @@ export function defaultSanitizeForAudit(record: Partial<AuditRecord>): Partial<A
         sanitized.mcp.params = sanitizeValue(sanitized.mcp.params);
     }
 
-    // Sanitize MCP Result (in case it contains sensitive data)
+    // Sanitize MCP Result
     if (sanitized.outcome?.mcpResponse?.result) {
         sanitized.outcome.mcpResponse.result = sanitizeValue(sanitized.outcome.mcpResponse.result);
     }
 
-    // Sanitize Identity (if it's an object with potentially sensitive fields)
-    if (sanitized.identity && typeof sanitized.identity === 'object') {
-        sanitized.identity = sanitizeValue(sanitized.identity);
+    // Sanitize Identity Object
+    if (sanitized.identity) {
+        if (typeof sanitized.identity === 'object') {
+            // Only mask if it contains actual secrets, not just auth_method etc.
+            if (containsSecretKey(sanitized.identity)) {
+                sanitized.identity = MASK_STRING;
+            } else {
+                sanitized.identity = sanitizeValue(sanitized.identity);
+            }
+        }
+        // String identities remain unchanged
     }
 
     // Sanitize Error Details
@@ -90,4 +164,4 @@ export function defaultSanitizeForAudit(record: Partial<AuditRecord>): Partial<A
     }
 
     return sanitized;
-} 
+}

@@ -12,7 +12,12 @@ export function generateEventId(): string {
 export function buildTransportContext(transport: Transport | undefined): TransportContext {
     let transportType = 'unknown';
     if (transport) {
-        const className = transport.constructor?.name;
+        // Try different ways to get the transport class name
+        const className = 
+            (transport as any).__className || // Check custom property first
+            (transport as any)[Symbol.toStringTag] || // Then check Symbol.toStringTag 
+            transport.constructor?.name; // Finally check constructor name
+            
         if (className?.includes('Stdio')) transportType = 'stdio';
         else if (className?.includes('SSE')) transportType = 'sse';
         else if (className?.includes('WebSocket')) transportType = 'websocket';
