@@ -1130,6 +1130,352 @@ describe('GovernancePipeline', () => {
 
         // ... audit failure tests from before ...
 
+        // --- Transport Context Tests ---
+        describe('Transport Context', () => {
+            const mockTransportHeaders = {
+                'Authorization': 'Bearer test-token-123',
+                'X-Custom-Auth': 'custom-auth-value',
+                'X-Session-Data': 'session-metadata',
+                'Content-Type': 'application/json'
+            };
+
+            beforeEach(() => {
+                // Create a new operation context with specific headers
+                mockOperationContext = {
+                    ...mockOperationContext,
+                    transportContext: {
+                        transportType: 'http',
+                        sessionId: 'session-123',
+                        headers: mockTransportHeaders
+                    }
+                };
+            });
+
+            it('should pass transport headers to identityResolver.resolveIdentity', async () => {
+                // Arrange
+                const userId = 'user-from-headers';
+                mockIdentityResolver.resolveIdentity.mockResolvedValue(userId);
+                mockOptions.identityResolver = mockIdentityResolver;
+
+                // Act
+                await pipeline.executeRequestPipeline(mockRequest, mockBaseExtra, mockOperationContext, mockAuditRecord);
+
+                // Assert
+                expect(mockIdentityResolver.resolveIdentity).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        transportContext: expect.objectContaining({
+                            headers: mockTransportHeaders
+                        })
+                    })
+                );
+                // Verify the resolved identity is used downstream
+                expect(mockRequestHandler).toHaveBeenCalledWith(
+                    expect.anything(),
+                    expect.objectContaining({
+                        identity: userId,
+                        transportContext: expect.objectContaining({
+                            headers: mockTransportHeaders
+                        })
+                    })
+                );
+            });
+
+            it('should pass transport headers to derivePermission for RBAC', async () => {
+                // Arrange
+                mockOptions.enableRbac = true;
+                mockOptions.roleStore = mockRoleStore;
+                mockOptions.permissionStore = mockPermissionStore;
+                const userId = 'user-with-headers';
+                mockIdentityResolver.resolveIdentity.mockResolvedValue(userId);
+                mockRoleStore.getRoles.mockResolvedValue(['viewer']);
+                mockPermissionStore.hasPermission.mockResolvedValue(true);
+
+                // Act
+                await pipeline.executeRequestPipeline(mockRequest, mockBaseExtra, mockOperationContext, mockAuditRecord);
+
+                // Assert
+                expect(mockDerivePermission).toHaveBeenCalledWith(
+                    expect.anything(),
+                    expect.objectContaining({
+                        headers: mockTransportHeaders
+                    })
+                );
+            });
+
+            it('should include transport headers in audit record', async () => {
+                // Act
+                await pipeline.executeRequestPipeline(mockRequest, mockBaseExtra, mockOperationContext, mockAuditRecord);
+
+                // Assert
+                expect(mockAuditStore.log).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        transport: expect.objectContaining({
+                            transportType: 'http',
+                            sessionId: 'session-123',
+                            headers: mockTransportHeaders
+                        })
+                    })
+                );
+            });
+
+            it('should handle missing or empty headers gracefully', async () => {
+                // Create new context with empty headers
+                mockOperationContext = {
+                    ...mockOperationContext,
+                    transportContext: {
+                        ...mockOperationContext.transportContext,
+                        headers: {}
+                    }
+                };
+
+                // Act
+                await pipeline.executeRequestPipeline(mockRequest, mockBaseExtra, mockOperationContext, mockAuditRecord);
+
+                // Assert
+                expect(mockIdentityResolver.resolveIdentity).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        transportContext: expect.objectContaining({
+                            headers: {}
+                        })
+                    })
+                );
+                expect(mockDerivePermission).toHaveBeenCalledWith(
+                    expect.anything(),
+                    expect.objectContaining({
+                        headers: {}
+                    })
+                );
+            });
+
+            it('should preserve custom transport metadata', async () => {
+                // Arrange
+                const wsHeaders = {
+                    'Sec-WebSocket-Protocol': 'wss',
+                    'Sec-WebSocket-Version': '13',
+                    'Sec-WebSocket-Extensions': 'permessage-deflate',
+                    'x-ws-path': '/custom/path'
+                };
+                const wsExtras = {
+                    wsProtocol: 'wss',
+                    wsVersion: '13',
+                    wsExtensions: ['permessage-deflate'],
+                    wsPath: '/custom/path'
+                };
+                const newContext = {
+                    ...mockOperationContext,
+                    transportContext: {
+                        ...mockOperationContext.transportContext,
+                        headers: wsHeaders,
+                        transportType: 'websocket',
+                        ...wsExtras
+                    }
+                };
+
+                // Act
+                await pipeline.executeRequestPipeline(mockRequest, mockBaseExtra, newContext, mockAuditRecord);
+
+                // Assert
+                expect(mockAuditStore.log).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        transport: expect.objectContaining(wsExtras)
+                    })
+                );
+            });
+
+            describe('Edge Cases', () => {
+                it('should handle headers with mixed case consistently', async () => {
+                    // Arrange
+                    const headers = {
+                        'Authorization': 'Bearer token123',
+                        'x-custom-auth': 'value456',
+                        'Content-Type': 'application/json',
+                        'X-UPPERCASE': 'VALUE',
+                        'x-lowercase': 'value'
+                    };
+                    const newContext = {
+                        ...mockOperationContext,
+                        transportContext: {
+                            ...mockOperationContext.transportContext,
+                            headers
+                        }
+                    };
+
+                    // Act
+                    await pipeline.executeRequestPipeline(mockRequest, mockBaseExtra, newContext, mockAuditRecord);
+
+                    // Assert
+                    expect(mockIdentityResolver.resolveIdentity).toHaveBeenCalledWith(
+                        expect.objectContaining({
+                            transportContext: expect.objectContaining({ headers })
+                        })
+                    );
+                    expect(mockAuditStore.log).toHaveBeenCalledWith(
+                        expect.objectContaining({
+                            transport: expect.objectContaining({ headers })
+                        })
+                    );
+                });
+
+                it('should handle malformed transport context gracefully', async () => {
+                    // Arrange
+                    const malformedContext = {
+                        ...mockOperationContext,
+                        transportContext: {
+                            transportType: 'unknown',
+                            headers: {}, // Empty headers instead of null
+                            remoteAddress: undefined,
+                            sessionId: '123' // String instead of number
+                        }
+                    };
+
+                    // Act & Assert
+                    await expect(pipeline.executeRequestPipeline(
+                        mockRequest,
+                        mockBaseExtra,
+                        malformedContext,
+                        mockAuditRecord
+                    )).resolves.toEqual({ success: true });
+                });
+
+                it('should preserve custom transport metadata', async () => {
+                    // Arrange
+                    const wsHeaders = {
+                        'Sec-WebSocket-Protocol': 'wss',
+                        'Sec-WebSocket-Version': '13',
+                        'Sec-WebSocket-Extensions': 'permessage-deflate',
+                        'x-ws-path': '/custom/path'
+                    };
+                    const wsExtras = {
+                        wsProtocol: 'wss',
+                        wsVersion: '13',
+                        wsExtensions: ['permessage-deflate'],
+                        wsPath: '/custom/path'
+                    };
+                    const newContext = {
+                        ...mockOperationContext,
+                        transportContext: {
+                            ...mockOperationContext.transportContext,
+                            headers: wsHeaders,
+                            transportType: 'websocket',
+                            ...wsExtras
+                        }
+                    };
+
+                    // Act
+                    await pipeline.executeRequestPipeline(mockRequest, mockBaseExtra, newContext, mockAuditRecord);
+
+                    // Assert
+                    expect(mockAuditStore.log).toHaveBeenCalledWith(
+                        expect.objectContaining({
+                            transport: expect.objectContaining(wsExtras)
+                        })
+                    );
+                });
+
+                it('should handle large headers gracefully', async () => {
+                    // Arrange
+                    const largeValue = 'x'.repeat(10000);
+                    const headers = {
+                        'x-large-header': largeValue,
+                        'Authorization': 'Bearer token123'
+                    };
+                    const newContext = {
+                        ...mockOperationContext,
+                        transportContext: {
+                            ...mockOperationContext.transportContext,
+                            headers
+                        }
+                    };
+
+                    // Act
+                    await pipeline.executeRequestPipeline(mockRequest, mockBaseExtra, newContext, mockAuditRecord);
+
+                    // Assert
+                    expect(mockAuditStore.log).toHaveBeenCalledWith(
+                        expect.objectContaining({
+                            transport: expect.objectContaining({
+                                headers: expect.objectContaining({
+                                    'x-large-header': largeValue,
+                                    'Authorization': 'Bearer token123'
+                                })
+                            })
+                        })
+                    );
+                });
+
+                it('should handle special characters in headers correctly', async () => {
+                    // Arrange
+                    const headers = {
+                        'x-special': '!@#$%^&*()',
+                        'x-unicode': '你好世界',
+                        'x-emoji': '👋🌍',
+                        'x-newlines': 'line1\nline2\rline3',
+                        'x-spaces': '  trimmed  '
+                    };
+                    const newContext = {
+                        ...mockOperationContext,
+                        transportContext: {
+                            ...mockOperationContext.transportContext,
+                            headers
+                        }
+                    };
+
+                    // Act
+                    await pipeline.executeRequestPipeline(mockRequest, mockBaseExtra, newContext, mockAuditRecord);
+
+                    // Assert
+                    expect(mockIdentityResolver.resolveIdentity).toHaveBeenCalledWith(
+                        expect.objectContaining({
+                            transportContext: expect.objectContaining({ headers })
+                        })
+                    );
+                    expect(mockAuditStore.log).toHaveBeenCalledWith(
+                        expect.objectContaining({
+                            transport: expect.objectContaining({ headers })
+                        })
+                    );
+                });
+
+                it('should prevent header mutation attempts', async () => {
+                    // Arrange
+                    const originalHeaders = {
+                        'Authorization': 'Bearer token123',
+                        'x-custom': 'value'
+                    };
+                    const newContext = {
+                        ...mockOperationContext,
+                        transportContext: {
+                            ...mockOperationContext.transportContext,
+                            headers: { ...originalHeaders }
+                        }
+                    };
+
+                    // Setup a handler that tries to modify headers
+                    mockRequestHandler.mockImplementation(async (_req, extra) => {
+                        const transportContext = extra.transportContext;
+                        // Attempt to modify headers (should be prevented by readonly)
+                        Object.assign(transportContext.headers, {
+                            'Authorization': 'Modified',
+                            'x-new': 'new value'
+                        });
+                        return { success: true };
+                    });
+
+                    // Act
+                    await pipeline.executeRequestPipeline(mockRequest, mockBaseExtra, newContext, mockAuditRecord);
+
+                    // Assert
+                    expect(mockAuditStore.log).toHaveBeenCalledWith(
+                        expect.objectContaining({
+                            transport: expect.objectContaining({
+                                headers: originalHeaders // Original headers should be preserved
+                            })
+                        })
+                    );
+                });
+            });
+        });
+
     }); // End executeRequestPipeline describe
 
 

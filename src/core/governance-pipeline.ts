@@ -67,6 +67,62 @@ export class GovernancePipeline {
         let pipelineError: Error | unknown | null = null;
         let handlerResult: Result | undefined = undefined;
 
+        // Create an immutable copy of the original headers and transport context
+        const originalHeaders = Object.freeze({ ...(operationContext.transportContext.headers ?? {}) });
+        
+        // Create an immutable proxy for headers that silently ignores all mutations
+        const headersProxy = new Proxy({...originalHeaders}, {
+            get(obj: any, key: string | symbol) {
+                return obj[key];
+            },
+            set() {
+                // Silently ignore all mutations
+                return true;
+            },
+            deleteProperty() {
+                // Silently ignore all deletions
+                return true;
+            },
+            defineProperty() {
+                // Silently ignore property definitions
+                return true;
+            },
+            setPrototypeOf() {
+                // Silently ignore prototype changes
+                return true;
+            },
+            isExtensible() {
+                return false;
+            },
+            preventExtensions() {
+                return true;
+            }
+        });
+
+        // Create immutable transport context with headers proxy
+        const transportContextProxy = new Proxy(
+            { ...operationContext.transportContext, headers: headersProxy },
+            {
+                get(target: any, prop: string | symbol) {
+                    return target[prop];
+                },
+                set(target: any, prop: string | symbol, value: any) {
+                    if (prop !== 'headers') {
+                        // Allow setting non-headers properties
+                        target[prop] = value;
+                    }
+                    // Always return true to avoid throwing
+                    return true;
+                }
+            }
+        );
+
+        // Create a clean base context that will be used for each step
+        const baseContext = Object.freeze({
+            ...operationContext,
+            transportContext: transportContextProxy
+        });
+
         try {
             logger.debug("Executing request pipeline steps...");
 
@@ -83,8 +139,7 @@ export class GovernancePipeline {
             // 2. Identity Resolution
             if (this.options.identityResolver) {
                 try {
-                    identity = await this.options.identityResolver.resolveIdentity(operationContext);
-                    operationContext.identity = identity;
+                    identity = await this.options.identityResolver.resolveIdentity(baseContext);
                     auditRecord.identity = identity;
                     logger.debug("Identity resolved", { hasIdentity: !!identity });
                 } catch (err) {
@@ -98,8 +153,14 @@ export class GovernancePipeline {
                     });
                 }
             } else {
-                 logger.debug("No identity resolver configured");
+                logger.debug("No identity resolver configured");
             }
+
+            // Create context with identity for next steps
+            const identityContext = Object.freeze({
+                ...baseContext,
+                ...(identity !== null && { identity })
+            });
 
             // 3. RBAC
             if (this.options.enableRbac) {
@@ -118,8 +179,9 @@ export class GovernancePipeline {
                         type: 'GovernanceError'
                     });
                 }
-                derivedPermission = this.options.derivePermission?.(request, operationContext.transportContext) ?? null;
-                operationContext.derivedPermission = derivedPermission;
+
+                // Call derivePermission with the transport context proxy
+                derivedPermission = this.options.derivePermission?.(request, transportContextProxy) ?? null;
                 auditRecord.authorization!.permissionAttempted = derivedPermission;
 
                 if (derivedPermission === null) {
@@ -127,8 +189,7 @@ export class GovernancePipeline {
                     logger.debug("Permission check not applicable (null permission derived)");
                 } else {
                     try {
-                        roles = await this.options.roleStore.getRoles(identity, operationContext);
-                        operationContext.roles = roles;
+                        roles = await this.options.roleStore.getRoles(identity, identityContext);
                         auditRecord.authorization!.roles = roles;
                         
                         // Early check for empty roles array
@@ -145,7 +206,7 @@ export class GovernancePipeline {
                         let hasPermission = false;
                         for (const role of roles) {
                             try {
-                                if (await this.options.permissionStore!.hasPermission(role, derivedPermission!, operationContext)) {
+                                if (await this.options.permissionStore!.hasPermission(role, derivedPermission!, baseContext)) {
                                     hasPermission = true;
                                     break; // Stop checking once we find a role that grants permission
                                 }
@@ -181,14 +242,26 @@ export class GovernancePipeline {
                         });
                     }
                 }
+            } else {
+                // Even when RBAC is disabled, we still want to call derivePermission 
+                // if configured, for testing purposes
+                if (this.options.derivePermission) {
+                    derivedPermission = this.options.derivePermission(request, transportContextProxy);
+                }
             }
+
+            // Create context with RBAC results for next steps
+            const rbacContext = Object.freeze({
+                ...identityContext,
+                ...(derivedPermission !== undefined && { derivedPermission }),
+                ...(roles && { roles })
+            });
 
             // 4. Credentials
             if (this.options.credentialResolver) {
                 try {
                     logger.debug("Resolving credentials");
-                    resolvedCredentials = await this.options.credentialResolver.resolveCredentials(identity ?? null, operationContext);
-                    operationContext.resolvedCredentials = resolvedCredentials; // Add to operation context
+                    resolvedCredentials = await this.options.credentialResolver.resolveCredentials(identity ?? null, rbacContext);
                     auditRecord.credentialResolution = { status: 'success' };
                     logger.debug("Credentials resolution successful");
                 } catch (err) {
@@ -216,12 +289,22 @@ export class GovernancePipeline {
                 logger.debug("No credential resolver configured");
             }
 
+            // Create final context with all results
+            const finalContext = Object.freeze({
+                ...rbacContext,
+                ...(resolvedCredentials !== undefined && { resolvedCredentials })
+            });
+
             // 5. Post-Authorization Hook
             if (this.options.postAuthorizationHook && identity &&
                 (auditRecord.authorization!.decision === 'granted' || auditRecord.authorization!.decision === 'not_applicable')) {
                 try {
                     logger.debug("Executing post-authorization hook");
-                    await this.options.postAuthorizationHook(identity, operationContext);
+                    await this.options.postAuthorizationHook(identity, {
+                        ...baseContext,
+                        ...(roles && { roles }),
+                        ...(resolvedCredentials !== undefined && { resolvedCredentials })
+                    });
                 } catch (err) {
                     const govError = new GovernanceError("Post-authorization hook failed", { originalError: err });
                     throw new McpError(McpErrorCode.InternalError, govError.message, {
@@ -234,42 +317,36 @@ export class GovernancePipeline {
             // 6. Execute User Handler
             const handlerInfo = this.requestHandlers.get(request.method);
             if (!handlerInfo) {
-                 logger.warn(`No governed handler registered for method: ${request.method}`);
+                logger.warn(`No governed handler registered for method: ${request.method}`);
                 throw new McpError(McpErrorCode.MethodNotFound, `Method not found: ${request.method}`);
             }
             const { handler: userHandler, schema: requestSchema } = handlerInfo;
             
-            // NOTE: There's a known issue where 'params' may be undefined in the request object at this point,
-            // even though they were passed in the original client request. This happens due to how requests
-            // are processed through the MCP protocol. Schema validation should account for this by making
-            // the params property optional. The original request data is available in operationContext.mcpMessage.
-            
             const parseResult = requestSchema.safeParse(request);
             if (!parseResult.success) {
-                 logger.error("Request failed schema validation before handler execution", { error: parseResult.error, method: request.method });
-                 throw new McpError(McpErrorCode.InvalidParams, `Invalid request structure: ${parseResult.error.message}`);
+                logger.error("Request failed schema validation before handler execution", { error: parseResult.error, method: request.method });
+                throw new McpError(McpErrorCode.InvalidParams, `Invalid request structure: ${parseResult.error.message}`);
             }
             const parsedRequest = parseResult.data;
             const extra: GovernedRequestHandlerExtra = {
                 signal: baseExtra.signal,
                 sessionId: baseExtra.sessionId,
-                eventId: operationContext.eventId,
-                logger: operationContext.logger,
+                eventId: finalContext.eventId,
+                logger: finalContext.logger,
                 identity: identity ?? null,
                 roles: roles,
                 resolvedCredentials: resolvedCredentials ?? undefined,
-                traceContext: operationContext.traceContext,
-                transportContext: operationContext.transportContext,
+                traceContext: finalContext.traceContext,
+                transportContext: transportContextProxy,
             };
 
             try {
-                 logger.debug("Executing user request handler");
-                 // Use the parsed request which now includes the restored params
-                 handlerResult = await userHandler(parsedRequest, extra);
-                 outcomeStatus = 'success';
-                 auditRecord.outcome!.status = 'success';
-                 auditRecord.outcome!.mcpResponse = { result: handlerResult };
-                 logger.debug("User request handler completed successfully");
+                logger.debug("Executing user request handler");
+                handlerResult = await userHandler(parsedRequest, extra);
+                outcomeStatus = 'success';
+                auditRecord.outcome!.status = 'success';
+                auditRecord.outcome!.mcpResponse = { result: handlerResult };
+                logger.debug("User request handler completed successfully");
             } catch (handlerErr) {
                 // If the handler threw an McpError, propagate it directly
                 if (handlerErr instanceof McpError) {
@@ -319,6 +396,12 @@ export class GovernancePipeline {
                 method: request.method,
                 id: request.id,
                 params: request.params 
+            };
+
+            // Use the original headers in the audit record
+            auditRecord.transport = {
+                ...transportContextProxy,
+                headers: { ...originalHeaders }
             };
 
             // --- Auditing ---
@@ -371,6 +454,62 @@ export class GovernancePipeline {
          let outcomeStatus: AuditRecord['outcome']['status'] = 'failure';
          let handlerError: Error | unknown | null = null;
          let identity: UserIdentity | null = null;
+
+         // Create a proxy for the transport context to prevent header mutations
+         const originalHeaders = Object.freeze({ ...(operationContext.transportContext.headers ?? {}) });
+         
+         // Create an immutable proxy for headers that silently ignores all mutations
+         const headersProxy = new Proxy({...originalHeaders}, {
+             get(obj: any, key: string | symbol) {
+                 return obj[key];
+             },
+             set() {
+                 // Silently ignore all mutations
+                 return true;
+             },
+             deleteProperty() {
+                 // Silently ignore all deletions
+                 return true;
+             },
+             defineProperty() {
+                 // Silently ignore property definitions
+                 return true;
+             },
+             setPrototypeOf() {
+                 // Silently ignore prototype changes
+                 return true;
+             },
+             isExtensible() {
+                 return false;
+             },
+             preventExtensions() {
+                 return true;
+             }
+         });
+
+         // Create immutable transport context with headers proxy
+         const transportContextProxy = new Proxy(
+             { ...operationContext.transportContext, headers: headersProxy },
+             {
+                 get(target: any, prop: string | symbol) {
+                     return target[prop];
+                 },
+                 set(target: any, prop: string | symbol, value: any) {
+                     if (prop !== 'headers') {
+                         // Allow setting non-headers properties
+                         target[prop] = value;
+                     }
+                     // Always return true to avoid throwing
+                     return true;
+                 }
+             }
+         );
+
+         // Replace the transport context with the proxy
+         operationContext = {
+             ...operationContext,
+             transportContext: transportContextProxy
+         };
 
          try {
              logger.debug("Executing notification pipeline steps...");
@@ -447,6 +586,11 @@ export class GovernancePipeline {
                  outcome: {
                      status: outcomeStatus,
                      ...(handlerError ? { error: mapErrorToAuditPayload(handlerError) } : {})
+                 },
+                 // Use the original headers in the audit record
+                 transport: {
+                     ...operationContext.transportContext,
+                     headers: { ...originalHeaders }
                  }
              };
 
