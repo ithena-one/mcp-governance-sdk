@@ -187,7 +187,7 @@ export class GovernancePipeline {
                 }
 
                 // Call derivePermission with the transport context proxy
-                derivedPermission = this.options.derivePermission?.(request, transportContextProxy) ?? null;
+                derivedPermission = this.options.derivePermission?.(operationContext.mcpMessage as JSONRPCRequest, transportContextProxy) ?? null;
                 logger.debug("[Pipeline Phase] Permission derived.", { derivedPermission });
                 auditRecord.authorization!.permissionAttempted = derivedPermission;
 
@@ -261,7 +261,7 @@ export class GovernancePipeline {
                 // Even when RBAC is disabled, we still want to call derivePermission 
                 // if configured, for testing purposes
                 if (this.options.derivePermission) {
-                    derivedPermission = this.options.derivePermission(request, transportContextProxy);
+                    derivedPermission = this.options.derivePermission(operationContext.mcpMessage as JSONRPCRequest, transportContextProxy);
                     logger.debug("[Pipeline Phase] Permission derived (RBAC disabled).", { derivedPermission });
                 }
             }
@@ -426,11 +426,11 @@ export class GovernancePipeline {
             }
 
             // Ensure MCP fields are present
-            auditRecord.mcp = { 
+            auditRecord.mcp = {
                 type: 'request' as const,
                 method: request.method,
                 id: request.id,
-                params: request.params 
+                params: operationContext.mcpMessage.params // Use original params
             };
 
             // Use the original headers in the audit record
@@ -617,7 +617,7 @@ export class GovernancePipeline {
              const finalAuditRecord: Partial<AuditRecord> = {
                  ...auditRecord,
                  // Ensure mcp is an object before spreading
-                 mcp: { ...(auditRecord.mcp || { type: 'notification', method: notification.method }), params: notification.params },
+                 mcp: { ...(auditRecord.mcp || { type: 'notification', method: notification.method }), params: operationContext.mcpMessage.params }, // Use original params
                  outcome: {
                      status: outcomeStatus,
                      ...(handlerError ? { error: mapErrorToAuditPayload(handlerError) } : {})
