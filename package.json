@@ -1,6 +1,6 @@
 {
   "name": "@ithena-one/mcp-governance",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Governance layer (Identity, RBAC, Credentials, Audit, Logging, Tracing) for Model Context Protocol (MCP) servers.",
   "main": "dist/cjs/index.js",
   "module": "dist/esm/index.js",
