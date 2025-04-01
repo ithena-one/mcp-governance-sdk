@@ -14,6 +14,7 @@ Build secure, compliant, and observable MCP applications by easily adding **Iden
 **📚 Documentation:**
 
 *   **[Getting Started](./docs/getting-started.md)** - Quick start guide with a complete example
+*   **[Tutorial: Identity & RBAC](./docs/tutorial.md)** - Step-by-step guide to implementing core governance features
 *   **[Core Concepts](./docs/core-concepts.md)** - Understanding the SDK's architecture and pipeline
 *   **[Configuration](./docs/configuration.md)** - All available options and their usage
 *   **[Interfaces](./docs/interfaces.md)** - Extensibility points and custom implementations

@@ -220,6 +220,7 @@ You should see corresponding log messages and audit records (if using `ConsoleAu
 
 *   Understand the **[Core Concepts](./core-concepts.md)**.
 *   Review **[Configuration](./configuration.md)** options.
+*   Follow the **[Tutorial: Identity & RBAC](./tutorial.md)** for a step-by-step guide.
 *   Implement **production-ready** versions of the governance components, especially `IdentityResolver`, `RoleStore`, `PermissionStore`, and potentially `CredentialResolver` and `AuditLogStore`. See the **[Interfaces](./interfaces.md)** documentation.
 *   Review the **[Security Considerations](./security.md)**.
 
