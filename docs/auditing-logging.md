@@ -33,9 +33,10 @@ Auditing creates a detailed, structured record of each significant operation (pr
     *   Defaults: `NoOpAuditLogStore` (disables auditing), `ConsoleAuditLogStore` (logs JSON to console - **for development only**).
 
 3.  **`sanitizeForAudit` (Configuration Option):** (`GovernedServerOptions`) A function you provide to process the `AuditRecord` *before* it's sent to the `AuditLogStore`.
-    *   **Purpose:** To remove or mask sensitive information (PII, secrets, proprietary data) to prevent it from being persisted in audit logs.
-    *   **Default (`defaultSanitizeForAudit`):** Provides basic masking for common patterns (keywords like `token`, `password`, `secret`; `Bearer` tokens) and truncates long strings.
-    *   **⚠️ CRITICAL:** The default sanitizer is **insufficient** for most production systems. You **MUST** review its behavior and **customize it** to redact sensitive data specific to your application's parameters, results, identity objects, and error details. Failure to do so can lead to severe security vulnerabilities and compliance violations.
+    *   **Purpose:** To remove, mask, or transform sensitive information (PII, secrets, proprietary data, etc.) within the `AuditRecord` before it reaches persistent storage, preventing accidental exposure in logs.
+    *   **Default (`defaultSanitizeForAudit`):** The SDK provides a basic default sanitizer (`src/defaults/sanitization.ts`) that uses **regular expressions to match common secret key names** (e.g., `apiKey`, `secret`, `password`, `token`, including `Bearer` tokens) and masks their corresponding values. It also attempts to avoid simple substring matches (like `token` within `tokenizer`) and truncates very long string values.
+    *   **⚠️ CRITICAL IMPORTANCE:** The default, key-based pattern-matching sanitizer serves only as a **basic starting point**. Robust secret detection is complex, and relying solely on key names is often **insufficient and potentially brittle** (prone to false positives and negatives) for production environments.
+    *   **Recommendation:** You **MUST** carefully review the default sanitizer's logic and limitations. It is **strongly recommended** that you implement and provide your own `sanitizeForAudit` function tailored to your specific application's data structures, parameter names, result formats, identity object structure, and overall sensitivity requirements. Failure to implement adequate sanitization can lead to **severe security vulnerabilities and compliance issues** if sensitive data leaks into audit logs.
 
 4.  **Configuration Options:**
     *   `auditStore`: Provide your `AuditLogStore` implementation.
