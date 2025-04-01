@@ -68,6 +68,16 @@ export class GovernancePipeline {
         let handlerResult: Result | undefined = undefined;
 
         // Create an immutable copy of the original headers and transport context
+        // NOTE: Context Immutability: The pipeline uses Object.freeze and Proxies
+        // to enforce shallow immutability on context objects passed between steps.
+        // This helps prevent unintended side effects where one step modifies context
+        // needed by a later step.
+        // - Headers specifically are wrapped in a Proxy that silently ignores mutations.
+        // - Other context objects are shallowly frozen using Object.freeze.
+        // Caveats: True deep immutability is not achieved. Mutations to nested objects
+        // within the context might still be possible. The Proxy approach for headers
+        // might obscure bugs if components attempt mutations, as they will fail silently.
+        // Consider potential performance overhead, although likely negligible.
         const originalHeaders = Object.freeze({ ...(operationContext.transportContext.headers ?? {}) });
         
         // Create an immutable proxy for headers that silently ignores all mutations
@@ -117,6 +127,8 @@ export class GovernancePipeline {
             }
         );
 
+        // Create a frozen base context incorporating the immutable transport context.
+        // Subsequent steps will build upon this, freezing each new context layer.
         // Create a clean base context that will be used for each step
         const baseContext = Object.freeze({
             ...operationContext,
@@ -160,6 +172,7 @@ export class GovernancePipeline {
                 logger.debug("[Pipeline Phase] Skipping Identity Resolution (no resolver).");
             }
 
+            // Freeze context after identity resolution.
             // Create context with identity for next steps
             const identityContext = Object.freeze({
                 ...baseContext,
@@ -266,6 +279,7 @@ export class GovernancePipeline {
                 }
             }
 
+            // Freeze context after RBAC checks.
             // Create context with RBAC results for next steps
             const rbacContext = Object.freeze({
                 ...identityContext,
@@ -309,6 +323,7 @@ export class GovernancePipeline {
                 logger.debug("[Pipeline Phase] Skipping Credential Resolution (no resolver).");
             }
 
+            // Freeze the final context before passing to hooks and handlers.
             // Create final context with all results
             const finalContext = Object.freeze({
                 ...rbacContext,

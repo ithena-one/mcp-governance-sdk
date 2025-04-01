@@ -56,6 +56,22 @@ Notifications follow a simpler path, primarily focused on execution and auditing
 3.  Execute Governed Handler (if one is registered for the notification method). Handler errors are logged.
 4.  Auditing (if `auditNotifications` is true).
 
+### Context Immutability
+
+**Design Principle:** To prevent unintended side effects between pipeline steps, the `OperationContext` passed through the various stages is treated as immutable.
+
+**Implementation:**
+*   The core context object created at the beginning of each step is shallowly frozen using `Object.freeze()`.
+*   The `transportContext.headers` object is wrapped in a `Proxy` that silently ignores any attempts to modify header values.
+
+**Implications & Caveats:**
+*   **Goal:** This strategy aims to ensure that governance components (like resolvers, stores, hooks) do not accidentally modify the context in a way that affects subsequent steps or the final handler.
+*   **Shallow Freezing:** Note that `Object.freeze()` only provides shallow immutability. Nested objects within the context (e.g., within `transportContext` or a resolved `identity` object) might still be mutable if not explicitly frozen themselves.
+*   **Silent Proxy:** The proxy for headers silently swallows write attempts. While this enforces immutability, it can potentially obscure bugs if a component incorrectly attempts to modify headers, as no error will be thrown.
+*   **Performance:** The overhead of `Object.freeze` and the proxy is generally negligible but is a factor in the design.
+
+It's recommended that tests for custom governance components consider scenarios involving attempted context modifications to ensure they behave as expected within this immutability model.
+
 *(Refer to the Mermaid diagram in `README.md` for a visual representation)*
 
 ## 3. `OperationContext`
