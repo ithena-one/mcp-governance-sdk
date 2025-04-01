@@ -25,7 +25,9 @@
     "build:types": "tsc -p tsconfig.types.json",
     "build": "npm run clean && npm run build:esm && npm run build:cjs && npm run build:types",
     "lint": "eslint src/**/*.ts",
-    "test": "jest",
+    "test": "jest --verbose",
+    "test:coverage": "jest --coverage",
+    "test:watch": "jest --watch --verbose",
     "prepublishOnly": "npm run build"
   },
   "repository": {

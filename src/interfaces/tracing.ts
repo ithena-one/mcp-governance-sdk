@@ -1,5 +1,5 @@
 import { TransportContext, TraceContext } from '../types.js';
-import { Request, Notification } from '@modelcontextprotocol/sdk';
+import { Request, Notification } from '@modelcontextprotocol/sdk/types.js';
 
 /**
  * Function type for extracting distributed tracing context from incoming requests.
