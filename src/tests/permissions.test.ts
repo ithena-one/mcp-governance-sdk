@@ -29,9 +29,9 @@ describe('Default Permissions Logic', () => {
             expect(defaultDerivePermission(createMockRequest('resources/list'), mockTransportContext)).toBe('resource:list');
             expect(defaultDerivePermission(createMockRequest('resources/templates/list'), mockTransportContext)).toBe('resource:templates:list');
             expect(defaultDerivePermission(createMockRequest('resources/subscribe', { uri: 'db://table' }), mockTransportContext)).toBe('resource:subscribe:db://table');
-            expect(defaultDerivePermission(createMockRequest('resources/subscribe'), mockTransportContext)).toBe('resource:subscribe:*'); // Default URI
+            expect(defaultDerivePermission(createMockRequest('resources/subscribe'), mockTransportContext)).toBe('resource:subscribe');
             expect(defaultDerivePermission(createMockRequest('resources/unsubscribe', { uri: 'ws://feed' }), mockTransportContext)).toBe('resource:unsubscribe:ws://feed');
-            expect(defaultDerivePermission(createMockRequest('resources/unsubscribe'), mockTransportContext)).toBe('resource:unsubscribe:*');
+            expect(defaultDerivePermission(createMockRequest('resources/unsubscribe'), mockTransportContext)).toBe('resource:unsubscribe');
         });
 
          it('should derive prompt permissions', () => {
@@ -58,7 +58,7 @@ describe('Default Permissions Logic', () => {
          });
 
         it('should return method name for unknown methods', () => {
-            expect(defaultDerivePermission(createMockRequest('custom/action'), mockTransportContext)).toBe('custom/action');
+            expect(defaultDerivePermission(createMockRequest('custom/action'), mockTransportContext)).toBe('custom:action');
         });
     });
 

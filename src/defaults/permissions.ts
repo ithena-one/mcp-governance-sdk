@@ -37,14 +37,17 @@ export function defaultDerivePermission(
     if (method.startsWith('resources/')) {
         const action = method.substring('resources/'.length);
         // Handle specific cases first if they have different logic or param needs
-        if (action === 'read' && params?.uri) {
-            return `resource:read:${params.uri}`;
+        if (action === 'read') {
+            // Append URI if present, handle case where uri might be missing but method is still 'resources/read'
+             return `resource:read${params?.uri ? `:${params.uri}` : ''}`;
         }
-        if (action === 'subscribe' && params?.uri) {
-             return `resource:subscribe:${params.uri}`;
+        if (action === 'subscribe') {
+             // Append URI only if present
+             return `resource:subscribe${params?.uri ? `:${params.uri}` : ''}`;
         }
-        if (action === 'unsubscribe' && params?.uri) {
-            return `resource:unsubscribe:${params.uri}`;
+        if (action === 'unsubscribe') {
+            // Append URI only if present
+             return `resource:unsubscribe${params?.uri ? `:${params.uri}` : ''}`;
         }
         // General conversion for simple patterns like 'resources/list' -> 'resource:list'
         // Only replace the *first* slash if applicable, or just use the action
