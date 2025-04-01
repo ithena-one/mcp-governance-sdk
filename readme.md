@@ -5,9 +5,11 @@
 <!-- [![Build Status](https://img.shields.io/github/actions/workflow/status/ithena-labs/mcp-governance/ci.yml?branch=main)](https://github.com/ithena-labs/mcp-governance/actions/workflows/ci.yml) -->
 <!-- Add build status badge once CI is set up -->
 
+**Website:** [ithena.one](https://ithena.one)
+
 **The missing governance layer for your Model Context Protocol (MCP) servers.**
 
-Build secure, compliant, and observable MCP applications by easily adding **Identity, Authorization (RBAC), Credential Management, Auditing, Logging, and Tracing** to servers built with [`@modelcontextprotocol/sdk`](https://github.com/modelcontextprotocol/typescript-sdk).
+Build secure, compliant, and observable MCP applications with [Ithena](https://ithena.one). Easily add **Identity, Authorization (RBAC), Credential Management, Auditing, Logging, and Tracing** using our SDK for servers built with [`@modelcontextprotocol/sdk`](https://github.com/modelcontextprotocol/typescript-sdk), or leverage the upcoming **Ithena Managed Platform** (waitlist open!).
 
 ---
 
@@ -41,6 +43,8 @@ Implementing these consistently across every MCP server is complex and error-pro
 
 This SDK provides a standard, pluggable framework that wraps the base `Server` class, letting you integrate essential governance features without rewriting your core MCP logic.
 
+Ithena offers two ways to achieve this: the **open-source SDK** (`@ithena-one/mcp-governance`) for self-hosting, and the upcoming **Ithena Managed Platform** (currently accepting users via a [waitlist](https://ithena.one#platform)) which provides hosted, production-ready backends for the SDK's interfaces, eliminating infrastructure management.
+
 **Benefits:**
 
 *   ✅ **Standardize Governance:** Consistent handling of identity, permissions, secrets, and auditing.
@@ -49,6 +53,7 @@ This SDK provides a standard, pluggable framework that wraps the base `Server` c
 *   🧩 **Pluggable Architecture:** Integrate easily with your existing enterprise systems (IDPs, Secret Managers, SIEMs) via well-defined interfaces. (See **[Interfaces](./docs/interfaces.md)**)
 *   ⚙️ **Focus on Business Logic:** Let the SDK handle governance boilerplate, allowing your team to focus on building valuable MCP resources, tools, and prompts.
 *   🚀 **Faster Development:** Get production-ready features out-of-the-box with sensible defaults for development and testing. (See **[Defaults](./docs/defaults.md)**)
+*   ☁️ **Optional Managed Platform:** Skip infrastructure setup and management by using the Ithena Managed Platform (join the [waitlist](https://ithena.one#platform)!).
 
 ## Key Features
 
@@ -110,6 +115,25 @@ graph LR
 
 See **[Core Concepts](./docs/core-concepts.md)** for more details on the pipeline.
 
+The SDK defines interfaces (like `IdentityResolver`, `AuditLogStore`, etc.). You can implement these yourself or use clients connecting to the **Ithena Managed Platform** (waitlist open) for a hosted solution.
+
+## SDK vs. Managed Platform
+
+Ithena offers flexibility in how you implement MCP governance:
+
+1.  **`@ithena-one/mcp-governance` SDK (Open Source):**
+    *   Provides the core `GovernedServer`, pipeline, and governance interfaces (`IdentityResolver`, `RoleStore`, `AuditLogStore`, etc.).
+    *   You implement the backend logic for these interfaces, integrating with your existing systems (databases, secret managers, SIEMs).
+    *   **Use Case:** Full control over infrastructure, integrating deeply with bespoke internal systems. Requires infrastructure management.
+
+2.  **Ithena Managed Platform (Waitlist Open):**
+    *   A hosted cloud service providing production-ready, scalable backend implementations for the SDK's interfaces via simple API clients.
+    *   Use the same SDK, but configure it to point to the Ithena Platform APIs instead of your own backends.
+    *   **Use Case:** Faster time-to-market, reduced operational burden, focus purely on MCP application logic.
+    *   ➡️ **[Join the Waitlist](https://ithena.one#platform)**
+
+You choose the approach that best fits your needs. The SDK seamlessly supports both self-hosted and platform-based backends.
+
 ## Installation
 
 ```bash
@@ -136,7 +160,7 @@ See the **[Getting Started Guide](./docs/getting-started.md)** for a runnable ex
 
 ## Contributing
 
-Contributions are welcome! Please open an issue or submit a pull request on the [GitHub repository](https://github.com/ithena-one/mcp-governance-sdk). <!-- Update URL -->
+Contributions are welcome! Please open an issue or submit a pull request on the [GitHub repository](https://github.com/ithena-one/mcp-governance-sdk).
 
 ## License
 
