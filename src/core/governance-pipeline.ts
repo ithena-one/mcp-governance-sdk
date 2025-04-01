@@ -139,11 +139,14 @@ export class GovernancePipeline {
             // 2. Identity Resolution
             if (this.options.identityResolver) {
                 try {
+                    logger.debug("[Pipeline Phase] Starting Identity Resolution...");
                     identity = await this.options.identityResolver.resolveIdentity(baseContext);
                     auditRecord.identity = identity;
                     logger.debug("Identity resolved", { hasIdentity: !!identity });
+                    logger.debug("[Pipeline Phase] Identity Resolution completed.", { identity: identity ? 'resolved' : 'null' });
                 } catch (err) {
                     logger.error("Identity resolution failed", { error: err });
+                    logger.debug("[Pipeline Phase] Identity Resolution failed.");
                     const authError = err instanceof Error 
                         ? new AuthenticationError(err.message)
                         : new AuthenticationError("Identity resolution failed");
@@ -154,6 +157,7 @@ export class GovernancePipeline {
                 }
             } else {
                 logger.debug("No identity resolver configured");
+                logger.debug("[Pipeline Phase] Skipping Identity Resolution (no resolver).");
             }
 
             // Create context with identity for next steps
@@ -165,9 +169,11 @@ export class GovernancePipeline {
             // 3. RBAC
             if (this.options.enableRbac) {
                 auditRecord.authorization!.decision = 'denied';
+                logger.debug("[Pipeline Phase] Starting RBAC check...");
                 if (identity === null) {
                     auditRecord.authorization!.denialReason = 'identity';
                     const authzError = new AuthorizationError('identity', "Identity required for authorization but none was resolved.");
+                    logger.debug("[Pipeline Phase] RBAC failed: Identity required but none resolved.");
                     throw new McpError(-32001, authzError.message, {
                         type: 'AuthorizationError',
                         reason: 'identity'
@@ -182,14 +188,17 @@ export class GovernancePipeline {
 
                 // Call derivePermission with the transport context proxy
                 derivedPermission = this.options.derivePermission?.(request, transportContextProxy) ?? null;
+                logger.debug("[Pipeline Phase] Permission derived.", { derivedPermission });
                 auditRecord.authorization!.permissionAttempted = derivedPermission;
 
                 if (derivedPermission === null) {
                     auditRecord.authorization!.decision = 'granted';
                     logger.debug("Permission check not applicable (null permission derived)");
+                    logger.debug("[Pipeline Phase] RBAC completed: Granted (no permission required).");
                 } else {
                     try {
                         roles = await this.options.roleStore.getRoles(identity, identityContext);
+                        logger.debug("[Pipeline Phase] Roles retrieved.", { roles });
                         auditRecord.authorization!.roles = roles;
                         
                         // Early check for empty roles array
@@ -205,9 +214,11 @@ export class GovernancePipeline {
                         // Check roles sequentially and stop on first grant
                         let hasPermission = false;
                         for (const role of roles) {
+                            logger.debug("[Pipeline Phase] Checking permission for role.", { role, permission: derivedPermission });
                             try {
                                 if (await this.options.permissionStore!.hasPermission(role, derivedPermission!, baseContext)) {
                                     hasPermission = true;
+                                    logger.debug("[Pipeline Phase] Permission granted by role.", { role, permission: derivedPermission });
                                     break; // Stop checking once we find a role that grants permission
                                 }
                             } catch (err) {
@@ -223,14 +234,17 @@ export class GovernancePipeline {
                         if (!hasPermission) {
                             auditRecord.authorization!.denialReason = 'permission';
                             const authzError = new AuthorizationError('permission', `Missing required permission: ${derivedPermission}`);
+                            logger.debug("[Pipeline Phase] RBAC failed: Permission denied.", { permission: derivedPermission, rolesChecked: roles });
                             throw new McpError(-32001, authzError.message, {
                                 type: 'AuthorizationError',
                                 reason: 'permission'
                             });
                         }
                         auditRecord.authorization!.decision = 'granted';
+                        logger.debug("[Pipeline Phase] RBAC completed: Granted.", { permission: derivedPermission, grantedByRoles: roles });
                         logger.debug("Authorization granted", { permission: derivedPermission, roles });
                     } catch (err) {
+                        logger.debug("[Pipeline Phase] RBAC check encountered an error.", { error: err });
                         // If it's already an McpError (from permission checks or previous wrapping), rethrow
                         if (err instanceof McpError) throw err;
                         
@@ -243,10 +257,12 @@ export class GovernancePipeline {
                     }
                 }
             } else {
+                logger.debug("[Pipeline Phase] Skipping RBAC (disabled).");
                 // Even when RBAC is disabled, we still want to call derivePermission 
                 // if configured, for testing purposes
                 if (this.options.derivePermission) {
                     derivedPermission = this.options.derivePermission(request, transportContextProxy);
+                    logger.debug("[Pipeline Phase] Permission derived (RBAC disabled).", { derivedPermission });
                 }
             }
 
@@ -260,10 +276,12 @@ export class GovernancePipeline {
             // 4. Credentials
             if (this.options.credentialResolver) {
                 try {
+                    logger.debug("[Pipeline Phase] Starting Credential Resolution...");
                     logger.debug("Resolving credentials");
                     resolvedCredentials = await this.options.credentialResolver.resolveCredentials(identity ?? null, rbacContext);
                     auditRecord.credentialResolution = { status: 'success' };
                     logger.debug("Credentials resolution successful");
+                    logger.debug("[Pipeline Phase] Credential Resolution completed.", { resolved: resolvedCredentials !== undefined && resolvedCredentials !== null });
                 } catch (err) {
                     auditRecord.credentialResolution = {
                         status: 'failure',
@@ -273,6 +291,7 @@ export class GovernancePipeline {
                         }
                     };
                     logger.error("Credential resolution failed", { error: err });
+                    logger.debug("[Pipeline Phase] Credential Resolution failed.");
                     if (this.options.failOnCredentialResolutionError) {
                         const credError = err instanceof Error 
                             ? new CredentialResolutionError(err.message)
@@ -287,6 +306,7 @@ export class GovernancePipeline {
                 }
             } else {
                 logger.debug("No credential resolver configured");
+                logger.debug("[Pipeline Phase] Skipping Credential Resolution (no resolver).");
             }
 
             // Create final context with all results
@@ -299,13 +319,16 @@ export class GovernancePipeline {
             if (this.options.postAuthorizationHook && identity &&
                 (auditRecord.authorization!.decision === 'granted' || auditRecord.authorization!.decision === 'not_applicable')) {
                 try {
+                    logger.debug("[Pipeline Phase] Starting Post-Authorization Hook...");
                     logger.debug("Executing post-authorization hook");
                     await this.options.postAuthorizationHook(identity, {
                         ...baseContext,
                         ...(roles && { roles }),
                         ...(resolvedCredentials !== undefined && { resolvedCredentials })
                     });
+                    logger.debug("[Pipeline Phase] Post-Authorization Hook completed successfully.");
                 } catch (err) {
+                    logger.debug("[Pipeline Phase] Post-Authorization Hook failed.", { error: err });
                     const govError = new GovernanceError("Post-authorization hook failed", { originalError: err });
                     throw new McpError(McpErrorCode.InternalError, govError.message, {
                         type: 'GovernanceError',
@@ -316,18 +339,23 @@ export class GovernancePipeline {
 
             // 6. Execute User Handler
             const handlerInfo = this.requestHandlers.get(request.method);
+            logger.debug("[Pipeline Phase] Starting Handler Execution Lookup...");
             if (!handlerInfo) {
                 logger.warn(`No governed handler registered for method: ${request.method}`);
+                logger.debug("[Pipeline Phase] Handler Execution failed: Method not found.", { method: request.method });
                 throw new McpError(McpErrorCode.MethodNotFound, `Method not found: ${request.method}`);
             }
             const { handler: userHandler, schema: requestSchema } = handlerInfo;
+            logger.debug("[Pipeline Phase] Handler found, validating schema...", { method: request.method });
             
             const parseResult = requestSchema.safeParse(request);
             if (!parseResult.success) {
                 logger.error("Request failed schema validation before handler execution", { error: parseResult.error, method: request.method });
+                logger.debug("[Pipeline Phase] Handler Execution failed: Invalid schema.", { method: request.method, error: parseResult.error });
                 throw new McpError(McpErrorCode.InvalidParams, `Invalid request structure: ${parseResult.error.message}`);
             }
             const parsedRequest = parseResult.data;
+            logger.debug("[Pipeline Phase] Schema valid, preparing handler context...", { method: request.method });
             const extra: GovernedRequestHandlerExtra = {
                 signal: baseExtra.signal,
                 sessionId: baseExtra.sessionId,
@@ -342,12 +370,15 @@ export class GovernancePipeline {
 
             try {
                 logger.debug("Executing user request handler");
+                logger.debug("[Pipeline Phase] Executing user handler...", { method: request.method });
                 handlerResult = await userHandler(parsedRequest, extra);
                 outcomeStatus = 'success';
                 auditRecord.outcome!.status = 'success';
                 auditRecord.outcome!.mcpResponse = { result: handlerResult };
                 logger.debug("User request handler completed successfully");
+                logger.debug("[Pipeline Phase] Handler Execution completed successfully.", { method: request.method });
             } catch (handlerErr) {
+                logger.debug("[Pipeline Phase] Handler Execution failed.", { method: request.method, error: handlerErr });
                 // If the handler threw an McpError, propagate it directly
                 if (handlerErr instanceof McpError) {
                     throw handlerErr;
@@ -366,16 +397,20 @@ export class GovernancePipeline {
             pipelineError = pipeErr;
             if (pipeErr instanceof AuthorizationError) {
                 outcomeStatus = 'denied';
+                logger.debug("[Pipeline Phase] Overall Outcome: Denied (AuthorizationError)");
             } else if (pipeErr instanceof AuthenticationError || 
                        pipeErr instanceof CredentialResolutionError ||
                        pipeErr instanceof HandlerError ||
                        pipeErr instanceof GovernanceError) {
                 outcomeStatus = 'failure';
+                logger.debug("[Pipeline Phase] Overall Outcome: Failure (AuthenticationError, CredentialResolutionError, HandlerError, or GovernanceError)");
             } else if (pipeErr instanceof McpError) {
                 const errorData = pipeErr.data as ErrorData | undefined;
                 outcomeStatus = (errorData?.type === 'AuthorizationError') ? 'denied' : 'failure';
+                logger.debug(`[Pipeline Phase] Overall Outcome: ${outcomeStatus} (McpError: ${errorData?.type || 'Unknown'})`);
             } else {
                 outcomeStatus = 'failure';
+                logger.debug("[Pipeline Phase] Overall Outcome: Failure (Unknown Error)");
             }
             auditRecord.outcome!.status = outcomeStatus;
             throw pipeErr;
