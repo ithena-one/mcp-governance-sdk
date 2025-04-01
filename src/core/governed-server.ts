@@ -248,22 +248,45 @@ export class GovernedServer {
     // --- Wrapper Handler Creation and Registration ---
 
     /** Registers wrapper functions with the baseServer for all stored handlers. */
-    private _registerBaseHandlers(): void {
-        this.options.logger.debug("Registering base server handlers for governed methods...");
-        this.requestHandlers.forEach((handlerInfo, method) => {
-            const handler = this._createPipelineRequestHandler(method);
-            // Create a minimal schema for the base server that matches its expected type
-            const baseSchema = z.object({ method: z.literal(method) });
-            this.baseServer.setRequestHandler(baseSchema, handler as any);
-        });
-        this.notificationHandlers.forEach((handlerInfo, method) => {
-            const handler = this._createPipelineNotificationHandler(method);
-            // Create a minimal schema for the base server that matches its expected type
-            const baseSchema = z.object({ method: z.literal(method) });
-            this.baseServer.setNotificationHandler(baseSchema, handler as any);
-        });
-        this.options.logger.debug("Base handler registration complete.");
-    }
+   /** Registers wrapper functions with the baseServer for all stored handlers. */
+   private _registerBaseHandlers(): void {
+    this.options.logger.debug("Registering base server handlers for governed methods...");
+
+    // Define a base schema that allows optional params
+    // WORKAROUND: Registering with a schema that explicitly includes `params: z.any().optional()`
+    // appears necessary to prevent the current version of the base SDK Server
+    // from stripping the params object before calling this wrapper handler.
+    // This is related to an upstream issue/PR: https://github.com/modelcontextprotocol/typescript-sdk/pull/248
+    // This workaround should be removed once the upstream fix is incorporated.
+    const baseMethodSchema = (method: string) => z.object({
+        jsonrpc: z.literal("2.0").optional(), // Allow flexibility from base SDK parsing
+        id: z.union([z.string(), z.number()]).optional(), // Allow flexibility
+        method: z.literal(method),
+        params: z.any().optional() // <-- Explicitly allow optional params of any type
+    }).passthrough(); // Allow other fields like _meta
+
+    this.requestHandlers.forEach((_handlerInfo, method) => {
+        const handler = this._createPipelineRequestHandler(method);
+        const schemaForBaseServer = baseMethodSchema(method);
+        // Register with the base server using the more permissive schema
+        this.baseServer.setRequestHandler(schemaForBaseServer as any, handler as any);
+        this.options.logger.debug(`Registered base request handler for: ${method}`);
+    });
+
+    this.notificationHandlers.forEach((_handlerInfo, method) => {
+        const handler = this._createPipelineNotificationHandler(method);
+         // Notifications also might have params, allow them minimally
+         const notificationSchemaForBaseServer = z.object({
+             jsonrpc: z.literal("2.0").optional(),
+             method: z.literal(method),
+             params: z.any().optional()
+         }).passthrough();
+        this.baseServer.setNotificationHandler(notificationSchemaForBaseServer as any, handler as any);
+         this.options.logger.debug(`Registered base notification handler for: ${method}`);
+    });
+
+    this.options.logger.debug("Base handler registration complete.");
+}
 
     /** Creates the wrapper that calls the request pipeline. */
     private _createPipelineRequestHandler(method: string): (req: JSONRPCRequest, baseExtra: BaseRequestHandlerExtra) => Promise<Result> {

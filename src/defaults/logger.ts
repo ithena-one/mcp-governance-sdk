@@ -56,7 +56,7 @@ export class ConsoleLogger implements Logger {
         return method.bind(console);
     }
 
-    private log(level: LogLevel, message: string, context?: LogContext, error?: Error | unknown): void {
+    log(level: LogLevel, message: string, context?: LogContext, error?: Error | unknown): void {
         if (!this.shouldLog(level)) {
             return;
         }
