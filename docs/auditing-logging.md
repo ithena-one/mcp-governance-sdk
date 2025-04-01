@@ -1,5 +1,7 @@
 # Auditing and Logging
 
+> **⚠️ Production Warning:** This SDK provides default implementations for many components (e.g., `ConsoleAuditLogStore`, `ConsoleLogger`) to simplify initial setup and development. However, many of these defaults are **NOT suitable for production environments** due to limitations in persistence, performance, or security. Always review the defaults mentioned in this document and others (like Authorization) and provide production-ready implementations for critical components before deployment.
+
 **Navigation:**
 * [← Back to Authorization](./authorization.md)
 * [Next: Default Implementations →](./defaults.md)
@@ -30,7 +32,10 @@ Auditing creates a detailed, structured record of each significant operation (pr
 
 2.  **`AuditLogStore` (Interface):** (`src/interfaces/audit.ts`) Your implementation receives `AuditRecord` objects and sends them to your chosen storage/analysis system (SIEM, database, log aggregator).
     *   Requires implementing the `log(record: AuditRecord): Promise<void>` method. This method **must handle its own errors** and should not throw, as it's called asynchronously after the request completes.
-    *   Defaults: `NoOpAuditLogStore` (disables auditing), `ConsoleAuditLogStore` (logs JSON to console - **for development only**).
+    *   Defaults:
+        *   `NoOpAuditLogStore`: **The safe default if no `auditStore` is configured.** This store does nothing, effectively disabling audit logging.
+        *   `ConsoleAuditLogStore`: Logs the full audit record as JSON to the console. **⚠️ Suitable for development and debugging only.** While not recommended for production, using this during initial development can be helpful to see the structure and content of audit records.
+    *   **⚠️ Production Warning:** Default implementations like `InMemoryRoleStore` and `InMemoryPermissionStore` (used in Authorization) are often provided for ease of getting started but may not be suitable for production due to lack of persistence or security features. Always review the documentation for *all* configured components and their defaults to ensure they meet your production requirements.
 
 3.  **`sanitizeForAudit` (Configuration Option):** (`GovernedServerOptions`) A function you provide to process the `AuditRecord` *before* it's sent to the `AuditLogStore`.
     *   **Purpose:** To remove, mask, or transform sensitive information (PII, secrets, proprietary data, etc.) within the `AuditRecord` before it reaches persistent storage, preventing accidental exposure in logs.
@@ -55,7 +60,7 @@ The SDK uses a structured logging approach, allowing you to capture log messages
     *   The `error` method accepts an optional `Error` object.
     *   The optional `child(bindings: LogContext): Logger` method is used by the SDK to create request-scoped loggers, automatically adding context like `eventId`, `requestId`, `method`, `traceId`, etc., to every message logged during that request's lifecycle.
 
-2.  **`ConsoleLogger` (Default):** (`src/defaults/logger.ts`) A basic implementation that logs JSON objects to the console, including any provided context. Supports creating child loggers. **Suitable for development only.**
+2.  **`ConsoleLogger` (Default):** (`src/defaults/logger.ts`) A basic implementation that logs JSON objects to the console, including any provided context. Supports creating child loggers. **⚠️ Suitable for development and debugging only; do not use in production.**
 
 3.  **Usage:**
     *   Provide your `Logger` implementation via the `logger` option in `GovernedServerOptions`.
