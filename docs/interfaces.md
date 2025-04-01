@@ -4,7 +4,7 @@
 * [← Back to Configuration](./configuration.md)
 * [Next: Authorization →](./authorization.md)
 
-The `@ithena/mcp-governance` SDK is designed to be pluggable. You integrate it with your existing infrastructure (Identity Providers, Secret Managers, Logging/Auditing systems) by implementing these core interfaces and providing them in the `GovernedServerOptions`.
+The `@ithena-one/mcp-governance` SDK is designed to be pluggable. You integrate it with your existing infrastructure (Identity Providers, Secret Managers, Logging/Auditing systems) by implementing these core interfaces and providing them in the `GovernedServerOptions`.
 
 ## `IdentityResolver`
 

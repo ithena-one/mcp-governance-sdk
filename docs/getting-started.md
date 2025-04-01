@@ -4,7 +4,7 @@
 * [← Back to README](../README.md)
 * [Next: Core Concepts →](./core-concepts.md)
 
-This guide provides a basic example of how to wrap a standard `@modelcontextprotocol/sdk` `Server` with the `@ithena/mcp-governance` SDK to add identity, RBAC, logging, and auditing.
+This guide provides a basic example of how to wrap a standard `@modelcontextprotocol/sdk` `Server` with the `@ithena-one/mcp-governance` SDK to add identity, RBAC, logging, and auditing.
 
 ## Prerequisites
 
@@ -16,14 +16,14 @@ This guide provides a basic example of how to wrap a standard `@modelcontextprot
 First, install the necessary packages:
 
 ```bash
-npm install @ithena/mcp-governance @modelcontextprotocol/sdk zod
+npm install @ithena-one/mcp-governance @modelcontextprotocol/sdk zod
 # or
-yarn add @ithena/mcp-governance @modelcontextprotocol/sdk zod
+yarn add @ithena-one/mcp-governance @modelcontextprotocol/sdk zod
 # or
-pnpm add @ithena/mcp-governance @modelcontextprotocol/sdk zod
+pnpm add @ithena-one/mcp-governance @modelcontextprotocol/sdk zod
 ```
 
-**Peer Dependencies:** Ensure you have compatible versions of `@modelcontextprotocol/sdk` and `zod` installed (check `peerDependencies` in `@ithena/mcp-governance`'s `package.json`).
+**Peer Dependencies:** Ensure you have compatible versions of `@modelcontextprotocol/sdk` and `zod` installed (check `peerDependencies` in `@ithena-one/mcp-governance`'s `package.json`).
 
 ## Example Code
 
@@ -53,7 +53,7 @@ import {
     GovernedRequestHandlerExtra,
     defaultDerivePermission, // Default permission derivation logic
     defaultSanitizeForAudit  // Default audit sanitization logic
-} from '@ithena/mcp-governance';
+} from '@ithena-one/mcp-governance';
 import { z } from 'zod'; // Peer dependency
 import process from 'node:process';
 

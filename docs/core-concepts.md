@@ -4,7 +4,7 @@
 * [← Back to Getting Started](./getting-started.md)
 * [Next: Configuration →](./configuration.md)
 
-The `@ithena/mcp-governance` SDK introduces several key concepts built around the base `@modelcontextprotocol/sdk`.
+The `@ithena-one/mcp-governance` SDK introduces several key concepts built around the base `@modelcontextprotocol/sdk`.
 
 ## 1. `GovernedServer`
 

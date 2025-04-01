@@ -1,5 +1,5 @@
 {
-  "name": "@ithena/mcp-governance",
+  "name": "@ithena-one/mcp-governance",
   "version": "1.0.0",
   "description": "Governance layer (Identity, RBAC, Credentials, Audit, Logging, Tracing) for Model Context Protocol (MCP) servers.",
   "main": "dist/cjs/index.js",
@@ -32,7 +32,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ithena-labs/mcp-governance.git"
+    "url": "git+https://github.com/ithena-one/mcp-governance-sdk.git"
   },
   "keywords": [
     "mcp",
@@ -49,9 +49,9 @@
   "author": "Ithena Team <contact@ithena.ai>",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/ithena-labs/mcp-governance/issues"
+    "url": "https://github.com/ithena-one/mcp-governance-sdk/issues"
   },
-  "homepage": "https://github.com/ithena-labs/mcp-governance#readme",
+  "homepage": "https://github.com/ithena-one/mcp-governance-sdk#readme",
   "devDependencies": {
     "@types/jest": "^29.5.14",
     "@types/node": "^18.19.84",

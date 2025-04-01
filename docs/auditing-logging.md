@@ -6,7 +6,7 @@
 * [← Back to Authorization](./authorization.md)
 * [Next: Default Implementations →](./defaults.md)
 
-The `@ithena/mcp-governance` SDK provides robust mechanisms for observing the behavior of your MCP server through auditing and structured logging.
+The `@ithena-one/mcp-governance` SDK provides robust mechanisms for observing the behavior of your MCP server through auditing and structured logging.
 
 ## Auditing
 

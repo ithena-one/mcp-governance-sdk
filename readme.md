@@ -1,6 +1,6 @@
-# MCP Governance SDK (@ithena/mcp-governance)
+# MCP Governance SDK (@ithena-one/mcp-governance)
 
-[![NPM Version](https://img.shields.io/npm/v/%40ithena%2Fmcp-governance)](https://www.npmjs.com/package/@ithena/mcp-governance)
+[![NPM Version](https://img.shields.io/npm/v/%40ithena-one%2Fmcp-governance)](https://www.npmjs.com/package/@ithena-one/mcp-governance)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 <!-- [![Build Status](https://img.shields.io/github/actions/workflow/status/ithena-labs/mcp-governance/ci.yml?branch=main)](https://github.com/ithena-labs/mcp-governance/actions/workflows/ci.yml) -->
 <!-- Add build status badge once CI is set up -->
@@ -37,7 +37,7 @@ The standard [`@modelcontextprotocol/sdk`](https://github.com/modelcontextprotoc
 
 Implementing these consistently across every MCP server is complex and error-prone.
 
-## The Solution: `@ithena/mcp-governance`
+## The Solution: `@ithena-one/mcp-governance`
 
 This SDK provides a standard, pluggable framework that wraps the base `Server` class, letting you integrate essential governance features without rewriting your core MCP logic.
 
@@ -63,7 +63,7 @@ This SDK provides a standard, pluggable framework that wraps the base `Server` c
 
 ## Architecture Overview
 
-`@ithena/mcp-governance` intercepts incoming MCP requests and notifications, processing them through a defined pipeline before (or during) the execution of your business logic handlers.
+`@ithena-one/mcp-governance` intercepts incoming MCP requests and notifications, processing them through a defined pipeline before (or during) the execution of your business logic handlers.
 
 ```mermaid
 graph LR
@@ -113,11 +113,11 @@ See **[Core Concepts](./docs/core-concepts.md)** for more details on the pipelin
 ## Installation
 
 ```bash
-npm install @ithena/mcp-governance @modelcontextprotocol/sdk zod
+npm install @ithena-one/mcp-governance @modelcontextprotocol/sdk zod
 # or
-yarn add @ithena/mcp-governance @modelcontextprotocol/sdk zod
+yarn add @ithena-one/mcp-governance @modelcontextprotocol/sdk zod
 # or
-pnpm add @ithena/mcp-governance @modelcontextprotocol/sdk zod
+pnpm add @ithena-one/mcp-governance @modelcontextprotocol/sdk zod
 ```
 
 **Peer Dependencies:** Make sure you have compatible versions of `@modelcontextprotocol/sdk` (check `peerDependencies` in `package.json`) and `zod` installed.

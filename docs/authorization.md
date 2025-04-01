@@ -4,7 +4,7 @@
 * [← Back to Interfaces](./interfaces.md)
 * [Next: Auditing & Logging →](./auditing-logging.md)
 
-The `@ithena/mcp-governance` SDK provides a flexible Role-Based Access Control (RBAC) system integrated into its processing pipeline.
+The `@ithena-one/mcp-governance` SDK provides a flexible Role-Based Access Control (RBAC) system integrated into its processing pipeline.
 
 ## Enabling RBAC
 

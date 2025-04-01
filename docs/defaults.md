@@ -4,7 +4,7 @@
 * [← Back to Auditing & Logging](./auditing-logging.md)
 * [Next: Security Considerations →](./security.md)
 
-The `@ithena/mcp-governance` SDK provides several default implementations for its core interfaces. These are primarily intended for **rapid development, testing, and demonstration purposes.**
+The `@ithena-one/mcp-governance` SDK provides several default implementations for its core interfaces. These are primarily intended for **rapid development, testing, and demonstration purposes.**
 
 **⚠️ IMPORTANT: Most default implementations are NOT suitable for production environments and should be replaced with robust, secure alternatives integrated with your infrastructure.**
 

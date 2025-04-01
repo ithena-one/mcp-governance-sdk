@@ -1,7 +1,6 @@
+# Tutorial: Implementing Basic Governance (Identity & RBAC) with `@ithena-one/mcp-governance`
 
-# Tutorial: Implementing Basic Governance (Identity & RBAC) with `@ithena/mcp-governance`
-
-This tutorial guides you through incrementally adding **Identity Resolution** and **Role-Based Access Control (RBAC)** to a Model Context Protocol (MCP) server using the `@ithena/mcp-governance` SDK. We'll start with a basic setup and progressively enhance a single application file (`src/governed-app.ts`).
+This tutorial guides you through incrementally adding **Identity Resolution** and **Role-Based Access Control (RBAC)** to a Model Context Protocol (MCP) server using the `@ithena-one/mcp-governance` SDK. We'll start with a basic setup and progressively enhance a single application file (`src/governed-app.ts`).
 
 **Prerequisites:**
 
@@ -9,7 +8,7 @@ This tutorial guides you through incrementally adding **Identity Resolution** an
 *   npm, yarn, or pnpm
 *   Basic understanding of TypeScript
 *   Familiarity with the base `@modelcontextprotocol/sdk`
-*   `@ithena/mcp-governance` SDK installed (e.g., `npm install @ithena/mcp-governance`)
+*   `@ithena-one/mcp-governance` SDK installed (e.g., `npm install @ithena-one/mcp-governance`)
 
 **Goal:** To create a governed MCP server that identifies callers and enforces basic permissions using RBAC.
 
@@ -24,7 +23,7 @@ This tutorial guides you through incrementally adding **Identity Resolution** an
     mkdir my-governed-mcp-app
     cd my-governed-mcp-app
     npm init -y
-    npm install @modelcontextprotocol/sdk @ithena/mcp-governance zod
+    npm install @modelcontextprotocol/sdk @ithena-one/mcp-governance zod
     npm install --save-dev typescript @types/node
     npx tsc --init --rootDir src --outDir dist --esModuleInterop --resolveJsonModule --lib esnext --module nodenext --moduleResolution nodenext --strict
     mkdir src
@@ -48,7 +47,7 @@ This tutorial guides you through incrementally adding **Identity Resolution** an
         ConsoleAuditLogStore,    // Default auditor
         GovernedRequestHandlerExtra, // Type for handler context
         // We'll import interfaces as needed in later steps
-    } from '@ithena/mcp-governance';
+    } from '@ithena-one/mcp-governance';
 
     console.log('Starting Governed MCP Server...');
 
@@ -133,7 +132,7 @@ This tutorial guides you through incrementally adding **Identity Resolution** an
         OperationContext,
         UserIdentity
         // ... other imports ...
-    } from '@ithena/mcp-governance';
+    } from '@ithena-one/mcp-governance';
     ```
 
 2.  **Implement Resolver:** Define the logic for identifying the user. Place this code *before* the `governedServerOptions` definition. We'll use the parameter-based approach for stdio testing.
@@ -225,7 +224,7 @@ This tutorial guides you through incrementally adding **Identity Resolution** an
         InMemoryRoleStore,
         InMemoryPermissionStore
         // ... other imports ...
-    } from '@ithena/mcp-governance';
+    } from '@ithena-one/mcp-governance';
     ```
 
 2.  **Implement RBAC Stores:** Define the roles and permissions. Place this *before* `governedServerOptions`.
@@ -328,7 +327,7 @@ import {
     OperationContext,
     UserIdentity,
     GovernedRequestHandlerExtra,
-} from '@ithena/mcp-governance';
+} from '@ithena-one/mcp-governance';
 
 console.log('Starting Governed MCP Server (Identity & RBAC)...');
 
@@ -411,7 +410,7 @@ startServer();
 
 ## Next Steps & Production Considerations
 
-This tutorial covered the core of Identity and RBAC. The `@ithena/mcp-governance` SDK also supports:
+This tutorial covered the core of Identity and RBAC. The `@ithena-one/mcp-governance` SDK also supports:
 
 *   **Credential Resolution:** Securely injecting secrets into handlers (`CredentialResolver`).
 *   **Custom Audit Sanitization:** Preventing sensitive data leaks in logs (`sanitizeForAudit`).
@@ -429,4 +428,4 @@ You can implement these by following similar steps: define the component logic, 
 
 Building robust, secure governance requires careful implementation. If managing these components becomes complex, exploring managed platforms designed for MCP governance might be beneficial. *[Optional Subtle Mention: Keep an eye out for solutions that simplify this process, potentially reducing the need for extensive custom component development.]*
 
-Refer to the full `@ithena/mcp-governance` documentation for detailed guides on all features and production best practices.
+Refer to the full `@ithena-one/mcp-governance` documentation for detailed guides on all features and production best practices.

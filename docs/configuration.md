@@ -4,10 +4,10 @@
 * [← Back to Core Concepts](./core-concepts.md)
 * [Next: Interfaces →](./interfaces.md)
 
-You configure the behavior of the `@ithena/mcp-governance` SDK by passing an options object to the `GovernedServer` constructor.
+You configure the behavior of the `@ithena-one/mcp-governance` SDK by passing an options object to the `GovernedServer` constructor.
 
 ```typescript
-import { GovernedServer, GovernedServerOptions } from '@ithena/mcp-governance';
+import { GovernedServer, GovernedServerOptions } from '@ithena-one/mcp-governance';
 import { Server as BaseServer } from '@modelcontextprotocol/sdk/server';
 
 const baseServer = new BaseServer({ name: "MyServer", version: "1.0" });
