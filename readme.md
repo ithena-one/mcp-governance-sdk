@@ -1,7 +1,7 @@
 # MCP Governance SDK (@ithena-one/mcp-governance)
 
 [![NPM Version](https://img.shields.io/npm/v/%40ithena-one%2Fmcp-governance)](https://www.npmjs.com/package/@ithena-one/mcp-governance)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 <!-- [![Build Status](https://img.shields.io/github/actions/workflow/status/ithena-labs/mcp-governance/ci.yml?branch=main)](https://github.com/ithena-labs/mcp-governance/actions/workflows/ci.yml) -->
 <!-- Add build status badge once CI is set up -->
 
@@ -136,8 +136,8 @@ See the **[Getting Started Guide](./docs/getting-started.md)** for a runnable ex
 
 ## Contributing
 
-Contributions are welcome! Please open an issue or submit a pull request on the [GitHub repository](https://github.com/ithena-labs/mcp-governance). <!-- Update URL -->
+Contributions are welcome! Please open an issue or submit a pull request on the [GitHub repository](https://github.com/ithena-one/mcp-governance-sdk). <!-- Update URL -->
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the Apache-2.0 License. See the [LICENSE](LICENSE) file for details.
