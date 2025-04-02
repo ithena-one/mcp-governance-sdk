@@ -51,7 +51,7 @@
   "bugs": {
     "url": "https://github.com/ithena-one/mcp-governance-sdk/issues"
   },
-  "homepage": "https://github.com/ithena-one/mcp-governance-sdk#readme",
+  "homepage": "https://ithena.one",
   "devDependencies": {
     "@types/jest": "^29.5.14",
     "@types/node": "^18.19.84",
