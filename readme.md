@@ -9,7 +9,7 @@
 
 **The missing governance layer for your Model Context Protocol (MCP) servers.**
 
-Build secure, compliant, and observable MCP applications with [Ithena](https://ithena.one). Easily add **Identity, Authorization (RBAC), Credential Management, Auditing, Logging, and Tracing** using our SDK for servers built with [`@modelcontextprotocol/sdk`](https://github.com/modelcontextprotocol/typescript-sdk), or leverage the upcoming **Ithena Managed Platform** (waitlist open!).
+Build secure, compliant, and observable MCP applications with [Ithena](https://ithena.one). Easily add **Identity, Authorization (RBAC), Credential Management, Auditing, Logging, and Tracing** using our SDK for servers built with [`@modelcontextprotocol/typescript-sdk`](https://github.com/modelcontextprotocol/typescript-sdk), or leverage the upcoming **Ithena Managed Platform** (waitlist open!).
 
 ---
 
