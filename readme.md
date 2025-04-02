@@ -7,6 +7,7 @@
 [![NPM Version](https://img.shields.io/npm/v/%40ithena-one%2Fmcp-governance)](https://www.npmjs.com/package/@ithena-one/mcp-governance)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![X Follow](https://img.shields.io/twitter/follow/andellvan?style=social)](https://x.com/andellvan)
+<a href="https://www.producthunt.com/posts/ithena?embed=true&utm_source=badge-featured&utm_medium=badge&utm_souce=badge-ithena" target="_blank"><img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=948880&theme=light&t=1743628801037" alt="Ithena - AuthN&#0044;&#0032;AuthZ&#0044;&#0032;RBAC&#0044;&#0032;Auditing&#0044;&#0032;&#0038;&#0032;Compliance&#0032;Framework&#0032;for&#0032;MCP | Product Hunt" style="width: 250px; height: 54px;" width="250" height="54" /></a>
 
 <!-- [![Build Status](https://img.shields.io/github/actions/workflow/status/ithena-one/mcp-governance/ci.yml?branch=main)](https://github.com/ithena-one/mcp-governance/actions/workflows/ci.yml) -->
 <!-- Add build status badge once CI is set up -->
