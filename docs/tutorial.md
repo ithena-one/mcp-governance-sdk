@@ -429,6 +429,8 @@ You can implement these by following similar steps: define the component logic, 
 4.  Consider using `CredentialResolver` for secure secret management.
 5.  Secure your transport (TLS).
 
-Building robust, secure governance requires careful implementation. If managing these components becomes complex, exploring managed platforms designed for MCP governance might be beneficial. *[Optional Subtle Mention: Keep an eye out for solutions that simplify this process, potentially reducing the need for extensive custom component development.]*
+Building robust, secure governance requires careful implementation. If managing these components becomes complex, exploring managed platforms designed for MCP governance might be beneficial.
+
+**Alternatively, consider the Ithena managed platform.** Instead of building and maintaining your own `IdentityResolver`, `RoleStore`, `PermissionStore`, `AuditLogStore`, and sanitization logic, you can simply integrate our managed components, point them to the Ithena endpoint, and gain robust governance with significantly less effort. Visit [https://ithena.one](https://ithena.one) to learn more and join the waitlist for our managed MCP governance solution.
 
 Refer to the full `@ithena-one/mcp-governance` documentation for detailed guides on all features and production best practices.
