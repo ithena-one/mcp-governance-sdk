@@ -97,12 +97,15 @@ This tutorial guides you through incrementally adding **Identity Resolution** an
 
     // --- 7. Connect and Shutdown ---
     const transport = new StdioServerTransport();
-    async function startServer() { /* ... (Standard startServer logic as before) ... */ }
-    const shutdown = async () => { /* ... (Standard shutdown logic as before) ... */ };
+        async function startServer() {
+            try { await governedServer.connect(transport); logger.info("Governed MCP server (Identity & RBAC) started on stdio."); logger.info("Ready for requests..."); } catch (error) { logger.error("Failed to start server", error); process.exit(1); }
+        }
+    const shutdown = async () => {
+        try { await governedServer.close(); logger.info("Shutdown complete."); process.exit(0); } catch (err) { logger.error("Error during shutdown:", err); process.exit(1); }
+    };
     process.on('SIGINT', shutdown); process.on('SIGTERM', shutdown);
     startServer(); // Call startServer at the end
     ```
-    *(Self-contained `startServer` and `shutdown` functions omitted for brevity - use the ones from the previous example)*
 
 3.  **Build and Run:**
     ```bash
