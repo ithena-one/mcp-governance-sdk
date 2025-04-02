@@ -1,7 +1,13 @@
+
 # MCP Governance SDK (@ithena-one/mcp-governance)
+<p align="center">
+  <img src="./public/logo-black.png" alt="Ithena Logo (Light Mode)" width="200" class="light-mode-only">
+  <img src="./public/logo-white.png" alt="Ithena Logo (Dark Mode)" width="200" class="dark-mode-only">
+</p>
 
 [![NPM Version](https://img.shields.io/npm/v/%40ithena-one%2Fmcp-governance)](https://www.npmjs.com/package/@ithena-one/mcp-governance)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![X Follow](https://img.shields.io/twitter/follow/andellvan?style=social)](https://x.com/andellvan)
 <!-- [![Build Status](https://img.shields.io/github/actions/workflow/status/ithena-labs/mcp-governance/ci.yml?branch=main)](https://github.com/ithena-labs/mcp-governance/actions/workflows/ci.yml) -->
 <!-- Add build status badge once CI is set up -->
 
