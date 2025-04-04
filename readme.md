@@ -20,6 +20,8 @@
 
 Build secure, compliant, and observable MCP applications with [Ithena](https://ithena.one). Easily add **Identity, Authorization (RBAC), Credential Management, Auditing, Logging, and Tracing** using our SDK for servers built with [`@modelcontextprotocol/typescript-sdk`](https://github.com/modelcontextprotocol/typescript-sdk), or leverage the upcoming **Ithena Managed Platform** (waitlist open!).
 
+> ✨ **New Feature:** Optional **OpenTelemetry tracing** support has been added! Gain deeper insights into governance pipeline performance by enabling detailed span generation for key stages. See [Auditing & Logging](./docs/auditing-logging.md#opentelemetry-tracing) for configuration and details.
+
 ---
 
 **📚 Documentation:**
