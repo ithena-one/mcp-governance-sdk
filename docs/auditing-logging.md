@@ -105,15 +105,15 @@ The SDK facilitates distributed tracing by extracting trace context information.
     *   Use this context to correlate logs and traces across different services. Provide a custom provider if you use a different propagation standard.
 
 
-## OpenTelemetry Tracing (Pipeline Instrumentation)
+## OpenTelemetry Tracing & Metrics (Pipeline Instrumentation)
 
-Beyond just propagating trace context, the SDK can optionally generate detailed OpenTelemetry spans for the internal stages of the governance pipeline, providing granular performance insights.
+Beyond just propagating trace context, the SDK can optionally generate detailed OpenTelemetry **spans and metrics** for the internal stages of the governance pipeline, providing granular performance and operational insights.
 
-This uses the standard [`@opentelemetry/api`](https://github.com/open-telemetry/opentelemetry-js-api) package.
+This uses the standard [`@opentelemetry/api`](https://github.com/open-telemetry/opentelemetry-js-api) package for both traces and metrics.
 
 **Enabling the Feature:**
 
-1.  **Configure SDK:** Your application needs a fully configured OpenTelemetry SDK (`@opentelemetry/sdk-node`) with an appropriate Span Exporter (e.g., `ConsoleSpanExporter` for development, or an OTLP exporter like `@opentelemetry/exporter-trace-otlp-http` to send data to systems like Jaeger, Tempo, Datadog, etc.). **This SDK setup must run in your application's entry point *before* `GovernedServer` is imported or used.** The `mcp-governance` SDK only uses the OTel *API*; it relies on your application to initialize the *SDK* to actually collect and export the spans.
+1.  **Configure SDK:** Your application needs a fully configured OpenTelemetry SDK (`@opentelemetry/sdk-node`) with appropriate **Span and Metric Exporters** (e.g., `ConsoleSpanExporter`, `ConsoleMetricExporter` for development, or OTLP exporters like `@opentelemetry/exporter-trace-otlp-http` and `@opentelemetry/exporter-metrics-otlp-http` to send data to systems like Jaeger, Prometheus, Tempo, Datadog, etc.). **This SDK setup must run in your application's entry point *before* `GovernedServer` is imported or used.** The `mcp-governance` SDK only uses the OTel *API*; it relies on your application to initialize the *SDK* to actually collect and export the telemetry.
 
     ```typescript
     // Example minimal SDK setup in your app's main file (e.g., server.ts)
@@ -121,16 +121,23 @@ This uses the standard [`@opentelemetry/api`](https://github.com/open-telemetry/
     import { NodeSDK } from '@opentelemetry/sdk-node';
     import { ConsoleSpanExporter } from '@opentelemetry/exporter-trace-console';
     import { SimpleSpanProcessor } from '@opentelemetry/sdk-trace-node';
+    import { PeriodicExportingMetricReader, ConsoleMetricExporter } from '@opentelemetry/sdk-metrics'; // Add metric components
 
     const sdk = new NodeSDK({
+      // Tracing Setup
       spanProcessor: new SimpleSpanProcessor(new ConsoleSpanExporter()),
+      // Metric Setup
+      metricReader: new PeriodicExportingMetricReader({
+          exporter: new ConsoleMetricExporter()
+          // exportIntervalMillis: 10000, // Default is 60s
+      }),
       // Add serviceName, other processors/exporters as needed
     });
     sdk.start();
     // --- Your application code starts here ---
     ```
 
-2.  **Enable in GovernedServer:** Set the `enablePipelineTracing` option to `true` in `GovernedServerOptions`:
+2.  **Enable in GovernedServer:** Set the `enablePipelineTracing` option to `true` in `GovernedServerOptions`. *Note: Currently, this single flag enables both tracing and metrics generation.* If this becomes undesirable, a separate `enablePipelineMetrics` flag could be added in the future.
 
     ```typescript
     import { GovernedServer } from '@ithena-one/mcp-governance';
@@ -138,22 +145,31 @@ This uses the standard [`@opentelemetry/api`](https://github.com/open-telemetry/
 
     const server = new GovernedServer(baseServer, {
         // ... other options ...
-        enablePipelineTracing: true, // <-- Enable span generation
+        enablePipelineTracing: true, // <-- Enables both span and metric generation
     });
     ```
 
-**Instrumented Stages:**
+**Generated Telemetry:**
 
-When enabled, the SDK will automatically create spans for the following key pipeline stages for both requests and notifications (where applicable):
+When enabled, the SDK automatically generates the following telemetry:
 
-*   `Ithena: Identity Resolution`
-*   `Ithena: RBAC Check` (Requests only)
-*   `Ithena: Credential Resolution` (Requests only)
-*   `Ithena: Post-Authorization Hook` (Requests only)
-*   `Ithena: Handler Invocation` (Requests and Notifications)
-*   `Ithena: Notification Handler Invocation` (Specific span for notifications)
+**Traces (Spans):**
+*   Created for key pipeline stages: Identity Resolution, RBAC Check, Credential Resolution, Post-Authorization Hook, and Handler Invocation.
+*   Linked to incoming parent trace context.
+*   Include **non-sensitive attributes** like `ithena.eventId`, `mcp.method`, `ithena.authz.decision`, etc. (See details below in the manual attribute section regarding what *isn't* included automatically).
+*   Errors during steps are recorded on the span.
 
-These spans will automatically link to the incoming parent trace context extracted by the `TraceContextProvider`.
+**Metrics:**
+*   **`ithena.request.total` (Counter):** Counts total requests/notifications processed.
+    *   Attributes: `mcp.method`, `mcp.type` ('request'/'notification'), `outcome.status` ('success'/'failure'/'denied').
+*   **`ithena.request.duration.seconds` (Histogram):** Measures total pipeline execution time.
+    *   Attributes: `mcp.method`, `mcp.type`, `outcome.status`.
+*   **`ithena.pipeline.step.duration.seconds` (Histogram):** Measures duration of individual pipeline steps.
+    *   Attributes: `ithena.step.name` (e.g., 'Ithena: Identity Resolution'), `outcome.status` ('success'/'failure' for the step).
+*   **`ithena.audit.log.total` (Counter):** Counts attempts to log audit records via the `AuditLogStore`.
+    *   Attributes: `outcome.status` ('success'/'failure' of the logging attempt).
+
+*Note on Histogram Buckets:* Default bucket boundaries are used. For optimal display in systems like Prometheus/Grafana, you may need to configure custom bucket boundaries via SDK Views in your application's OTel setup.
 
 **Automatically Added Attributes (Non-Sensitive Only):**
 
@@ -179,38 +195,48 @@ To prioritize security and avoid accidental leakage of sensitive data, the autom
 *   Detailed error messages or stack traces (errors are recorded via `span.recordException`, but sensitive details in messages depend on the error itself)
 *   Request parameters or handler results
 
-**Adding Custom Attributes (Manual User Responsibility):**
+**Adding Custom Attributes / Metrics (Manual User Responsibility):**
 
-You can add your own specific attributes to the currently active span from within your custom components (Identity Resolvers, Role/Permission Stores, Credential Resolvers, Post-Auth Hooks, Handlers).
+You can add your own specific attributes to the currently active span or record custom metrics from within your custom components (Identity Resolvers, Role/Permission Stores, Credential Resolvers, Post-Auth Hooks, Handlers).
 
 1.  **Import the OTel API:**
     ```typescript
-    import { trace } from '@opentelemetry/api';
+    import { trace, metrics } from '@opentelemetry/api';
     ```
-2.  **Get the Active Span:** Call `trace.getActiveSpan()` within your component's logic.
-3.  **Add Attributes:** Use `span?.setAttribute('my.custom.attribute', 'value')` or `span?.setAttributes({...})`.
+2.  **Get Active Span:** `trace.getActiveSpan()`.
+3.  **Add Span Attributes:** `span?.setAttribute(...)` or `span?.addEvent(...)`.
+4.  **Get Meter:** `metrics.getMeter('my-custom-meter')`.
+5.  **Create/Get Custom Metric Instrument:** e.g., `meter.createCounter(...)`.
+6.  **Record Custom Metric:** `myCounter.add(1, { ...attributes })`.
 
 ```typescript
 // Example inside a custom IdentityResolver
-import { trace } from '@opentelemetry/api';
+import { trace, metrics, ValueType } from '@opentelemetry/api';
 import { IdentityResolver, OperationContext, UserIdentity } from '@ithena-one/mcp-governance';
+
+// Define custom metric outside the class
+const meter = metrics.getMeter('my-custom-resolver-meter');
+const customIdpLookupCounter = meter.createCounter('custom.idp.lookup.total', {
+    description: 'Counts lookups to our specific IDP',
+    valueType: ValueType.INT
+});
 
 class MyCustomResolver implements IdentityResolver {
     async resolveIdentity(opCtx: OperationContext): Promise<UserIdentity | null> {
         const activeSpan = trace.getActiveSpan(); // Get the current span
 
         opCtx.logger.info('Resolving identity...');
-        activeSpan?.addEvent('Starting external IDP lookup'); // Add an event
+        activeSpan?.addEvent('Starting external IDP lookup'); // Add a span event
+        
+        // Record custom metric
+        customIdpLookupCounter.add(1, { 'idp.type': 'custom_ldap' });
 
         // ... logic to resolve identity ...
         const identity = { id: 'user-xyz', tenant: 'acme-corp' };
 
         if (identity) {
-            // Add a NON-SENSITIVE custom attribute
+            // Add a NON-SENSITIVE custom span attribute
             activeSpan?.setAttribute('custom.identity.tenantId', identity.tenant);
-
-            // ⚠️ WARNING: DO NOT DO THIS with sensitive data unless you understand the risks!
-            // activeSpan?.setAttribute('custom.identity.userId_SENSITIVE', identity.id);
         } else {
              activeSpan?.setAttribute('custom.identity.resolved', false);
         }
@@ -221,7 +247,7 @@ class MyCustomResolver implements IdentityResolver {
 }
 ```
 
-**⚠️ IMPORTANT:** When adding custom attributes manually, **you are responsible for ensuring no sensitive data (PII, secrets, etc.) is included** unless you have explicitly decided it's safe and necessary for your specific tracing backend and compliance requirements. The SDK cannot automatically sanitize attributes added manually via `getActiveSpan()`.
+**⚠️ IMPORTANT:** When adding custom span attributes or metric attributes manually, **you are responsible for ensuring no sensitive data (PII, secrets, etc.) is included** unless you have explicitly decided it's safe and necessary for your specific tracing/metrics backend and compliance requirements. The SDK cannot automatically sanitize attributes added manually via the OTel API.
 
 
 **Navigation:**
