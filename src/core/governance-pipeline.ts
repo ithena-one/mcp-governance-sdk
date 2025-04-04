@@ -17,7 +17,7 @@ import {
     UserIdentity, ResolvedCredentials, TransportContext, OperationContext,
     GovernedRequestHandlerExtra, GovernedNotificationHandlerExtra, AuditRecord
 } from '../types.js';
-import { GovernedServerOptions } from './governed-server.js'; 
+import { GovernedServerOptions } from '../types.js';
 import { AuthenticationError, AuthorizationError, CredentialResolutionError, HandlerError, GovernanceError } from '../errors/index.js';
 import { mapErrorToAuditPayload } from '../utils/error-mapper.js';
 

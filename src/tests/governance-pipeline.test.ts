@@ -4,7 +4,7 @@
 import { jest } from '@jest/globals';
 
 import { GovernancePipeline } from '../core/governance-pipeline.js';
-import { GovernedServerOptions } from '../core/governed-server.js';
+import { GovernedServerOptions } from '../types.js';
 
 // Mock interfaces
 import { IdentityResolver } from '../interfaces/identity.js';

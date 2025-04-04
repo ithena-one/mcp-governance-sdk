@@ -2,21 +2,23 @@
 // src/core/governed-server.ts
 
 import {
-    Request, Notification, Result, JSONRPCRequest, JSONRPCNotification,
+    Notification, Result, JSONRPCRequest, JSONRPCNotification,
     McpError, ErrorCode as McpErrorCode,
 } from '@modelcontextprotocol/sdk/types.js';
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { RequestHandlerExtra as BaseRequestHandlerExtra } from '@modelcontextprotocol/sdk/shared/protocol.js';
-import { ZodObject, ZodLiteral, z, ZodTypeAny } from 'zod';
+import { z } from 'zod';
 import {
-    UserIdentity, TransportContext, OperationContext, GovernedRequestHandlerExtra, GovernedNotificationHandlerExtra, AuditRecord
+    OperationContext, AuditRecord,
+    AnyRequestSchema, AnyNotificationSchema,
+    GovernedRequestHandler, GovernedNotificationHandler,
+    GovernedServerOptions, ProcessedGovernedServerOptions
 } from '../types.js';
-import { Logger } from '../interfaces/logger.js';
 import { GovernancePipeline } from './governance-pipeline.js'; // Import the new class
 import { LifecycleManager } from './lifecycle-manager.js'; // Import the new class
-import { HandlerRegistry, HandlerInfo } from './handler-registry.js'; // <-- Import HandlerRegistry
+import { HandlerRegistry } from './handler-registry.js'; // <-- Import HandlerRegistry
 import { mapErrorToPayload } from '../utils/error-mapper.js';
 import { generateEventId, buildTransportContext } from '../utils/helpers.js';
 import { defaultLogger } from '../defaults/logger.js';
@@ -24,55 +26,7 @@ import { defaultAuditStore } from '../defaults/audit.js';
 import { defaultTraceContextProvider } from '../defaults/tracing.js';
 import { defaultDerivePermission } from '../defaults/permissions.js';
 import { defaultSanitizeForAudit } from '../defaults/sanitization.js';
-// Import specific interfaces if needed for options type
-import { IdentityResolver } from '../interfaces/identity.js';
-import { RoleStore, PermissionStore } from '../interfaces/rbac.js';
-import { CredentialResolver } from '../interfaces/credentials.js';
-import { AuditLogStore } from '../interfaces/audit.js';
-import { TraceContextProvider } from '../interfaces/tracing.js';
 
-// Define handler map types again or import if moved
-// Export these types so HandlerRegistry can use them
-export type AnyRequestSchema = ZodObject<{ method: ZodLiteral<string>;[key: string]: ZodTypeAny }>;
-export type AnyNotificationSchema = ZodObject<{ method: ZodLiteral<string>;[key: string]: ZodTypeAny }>;
-type InferRequest<T extends AnyRequestSchema> = z.infer<T>;
-type InferNotification<T extends AnyNotificationSchema> = z.infer<T>;
-
-// Export these types so HandlerRegistry can use them
-export type GovernedRequestHandler<T extends AnyRequestSchema> = (
-    request: InferRequest<T>,
-    extra: GovernedRequestHandlerExtra
-) => Promise<Result>;
-
-export type GovernedNotificationHandler<T extends AnyNotificationSchema> = (
-    notification: InferNotification<T>,
-    extra: GovernedNotificationHandlerExtra
-) => Promise<void>;
-
-// --- GovernedServerOptions remains the same ---
-export interface GovernedServerOptions {
-    identityResolver?: IdentityResolver;
-    roleStore?: RoleStore;
-    permissionStore?: PermissionStore;
-    credentialResolver?: CredentialResolver;
-    auditStore?: AuditLogStore;
-    logger?: Logger;
-    traceContextProvider?: TraceContextProvider;
-    enableRbac?: boolean;
-    failOnCredentialResolutionError?: boolean;
-    auditDeniedRequests?: boolean;
-    auditNotifications?: boolean;
-    derivePermission?: (request: Request, transportContext: TransportContext) => string | null;
-    sanitizeForAudit?: (record: Partial<AuditRecord>) => Partial<AuditRecord>;
-    postAuthorizationHook?: (identity: UserIdentity, opCtx: OperationContext) => Promise<void>;
-    serviceIdentifier?: string;
-}
-// --- ProcessedGovernedServerOptions remains the same ---
-type ProcessedGovernedServerOptions = Required<Pick<GovernedServerOptions,
-    | 'auditStore' | 'logger' | 'traceContextProvider' | 'enableRbac'
-    | 'failOnCredentialResolutionError' | 'auditDeniedRequests' | 'auditNotifications'
-    | 'derivePermission' | 'sanitizeForAudit'
->> & GovernedServerOptions;
 
 
 /**
@@ -91,7 +45,7 @@ export class GovernedServer {
         options: GovernedServerOptions = {}
     ) {
         this.baseServer = baseServer;
-        this.options = { /* ... apply defaults as before ... */
+        this.options = {
             identityResolver: options.identityResolver,
             roleStore: options.roleStore,
             permissionStore: options.permissionStore,
