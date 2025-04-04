@@ -1,10 +1,5 @@
 // Core Class
 export { GovernedServer } from './core/governed-server.js';
-export type {
-    GovernedServerOptions,
-    GovernedRequestHandler,
-    GovernedNotificationHandler
-} from './core/governed-server.js';
 
 // Interfaces
 export type { IdentityResolver } from './interfaces/identity.js';
