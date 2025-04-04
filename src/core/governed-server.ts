@@ -16,6 +16,7 @@ import {
 import { Logger } from '../interfaces/logger.js';
 import { GovernancePipeline } from './governance-pipeline.js'; // Import the new class
 import { LifecycleManager } from './lifecycle-manager.js'; // Import the new class
+import { HandlerRegistry, HandlerInfo } from './handler-registry.js'; // <-- Import HandlerRegistry
 import { mapErrorToPayload } from '../utils/error-mapper.js';
 import { generateEventId, buildTransportContext } from '../utils/helpers.js';
 import { defaultLogger } from '../defaults/logger.js';
@@ -31,11 +32,13 @@ import { AuditLogStore } from '../interfaces/audit.js';
 import { TraceContextProvider } from '../interfaces/tracing.js';
 
 // Define handler map types again or import if moved
-type AnyRequestSchema = ZodObject<{ method: ZodLiteral<string>;[key: string]: ZodTypeAny }>;
-type AnyNotificationSchema = ZodObject<{ method: ZodLiteral<string>;[key: string]: ZodTypeAny }>;
+// Export these types so HandlerRegistry can use them
+export type AnyRequestSchema = ZodObject<{ method: ZodLiteral<string>;[key: string]: ZodTypeAny }>;
+export type AnyNotificationSchema = ZodObject<{ method: ZodLiteral<string>;[key: string]: ZodTypeAny }>;
 type InferRequest<T extends AnyRequestSchema> = z.infer<T>;
 type InferNotification<T extends AnyNotificationSchema> = z.infer<T>;
 
+// Export these types so HandlerRegistry can use them
 export type GovernedRequestHandler<T extends AnyRequestSchema> = (
     request: InferRequest<T>,
     extra: GovernedRequestHandlerExtra
@@ -80,10 +83,8 @@ export class GovernedServer {
     private readonly options: ProcessedGovernedServerOptions;
     private transportInternal?: Transport;
     private lifecycleManager: LifecycleManager;
+    private readonly handlerRegistry: HandlerRegistry; // <-- Add HandlerRegistry instance
     private pipeline?: GovernancePipeline; // Instantiated after connect
-
-    private requestHandlers: Map<string, { handler: GovernedRequestHandler<any>, schema: AnyRequestSchema }> = new Map();
-    private notificationHandlers: Map<string, { handler: GovernedNotificationHandler<any>, schema: AnyNotificationSchema }> = new Map();
 
     constructor(
         baseServer: Server,
@@ -107,6 +108,9 @@ export class GovernedServer {
             derivePermission: options.derivePermission ?? defaultDerivePermission,
             sanitizeForAudit: options.sanitizeForAudit ?? defaultSanitizeForAudit,
         };
+
+        // Initialize HandlerRegistry
+        this.handlerRegistry = new HandlerRegistry(this.options.logger); // <-- Initialize
 
         if (this.options.enableRbac && (!this.options.roleStore || !this.options.permissionStore)) {
             throw new Error("RoleStore and PermissionStore must be provided when RBAC is enabled.");
@@ -139,12 +143,15 @@ export class GovernedServer {
             // --- Initialize Components ---
             await this.lifecycleManager.initialize();
 
+            // --- Set HandlerRegistry as connected ---
+            this.handlerRegistry.setConnected(); // <-- Set connected
+
             // --- Instantiate Pipeline ---
-            // Pass necessary options and handler maps to the pipeline instance
+            // Pass necessary options and handler maps from the registry to the pipeline instance
             this.pipeline = new GovernancePipeline(
                 this.options,
-                this.requestHandlers,
-                this.notificationHandlers
+                this.handlerRegistry.getRequestHandlers(),      // <-- Get handlers from registry
+                this.handlerRegistry.getNotificationHandlers() // <-- Get handlers from registry
             );
 
             // --- Register Base Handlers ---
@@ -164,6 +171,7 @@ export class GovernedServer {
                 }).finally(() => {
                     this.transportInternal = undefined;
                     this.pipeline = undefined; // Clear pipeline instance
+                    this.handlerRegistry.setDisconnected(); // <-- Set disconnected
                     originalBaseOnClose?.();
                     logger.debug("Governed onclose handler finished.");
                 });
@@ -191,6 +199,9 @@ export class GovernedServer {
         // Shutdown components first using the manager
         await this.lifecycleManager.shutdown();
 
+        // Set registry as disconnected before potentially triggering onclose
+        this.handlerRegistry.setDisconnected(); // <-- Set disconnected
+
         // Then close the base server (which should trigger our onclose handler)
         if (this.baseServer) {
             try {
@@ -204,6 +215,8 @@ export class GovernedServer {
         } else {
             this.transportInternal = undefined;
             this.pipeline = undefined;
+            // Ensure disconnected is set even if no base server existed or failed to close
+            this.handlerRegistry.setDisconnected(); // <-- Ensure disconnected
         }
 
         logger.info("GovernedServer closed.");
@@ -220,13 +233,14 @@ export class GovernedServer {
     ): void {
         const method = requestSchema.shape.method.value;
         if (this.transportInternal) {
+            // Check transportInternal state instead of registry's isConnected
+            // to maintain the original behavior/error message context.
             throw new Error(`Cannot register request handler for ${method} after connect() has been called.`);
         }
-        if (this.requestHandlers.has(method)) {
-            this.options.logger.warn(`Overwriting request handler for method: ${method}`);
-        }
-        this.requestHandlers.set(method, { handler: handler as any, schema: requestSchema });
-        this.options.logger.debug(`Stored governed request handler for: ${method}`);
+        // Delegate registration to HandlerRegistry
+        this.handlerRegistry.registerRequestHandler(requestSchema, handler); // <-- Delegate
+        // Logging is now handled within HandlerRegistry
+        // this.options.logger.debug(`Stored governed request handler for: ${method}`);
     }
 
     setNotificationHandler<T extends AnyNotificationSchema>(
@@ -235,13 +249,14 @@ export class GovernedServer {
     ): void {
         const method = notificationSchema.shape.method.value;
         if (this.transportInternal) {
+             // Check transportInternal state instead of registry's isConnected
+             // to maintain the original behavior/error message context.
             throw new Error(`Cannot register notification handler for ${method} after connect() has been called.`);
         }
-        if (this.notificationHandlers.has(method)) {
-            this.options.logger.warn(`Overwriting notification handler for method: ${method}`);
-        }
-        this.notificationHandlers.set(method, { handler: handler as any, schema: notificationSchema });
-        this.options.logger.debug(`Stored governed notification handler for: ${method}`);
+        // Delegate registration to HandlerRegistry
+        this.handlerRegistry.registerNotificationHandler(notificationSchema, handler); // <-- Delegate
+        // Logging is now handled within HandlerRegistry
+        // this.options.logger.debug(`Stored governed notification handler for: ${method}`);
     }
 
 
@@ -265,7 +280,8 @@ export class GovernedServer {
         params: z.any().optional() // <-- Explicitly allow optional params of any type
     }).passthrough(); // Allow other fields like _meta
 
-    this.requestHandlers.forEach((_handlerInfo, method) => {
+    // Iterate over handlers from the registry
+    this.handlerRegistry.getRequestHandlers().forEach((_handlerInfo, method) => { // <-- Use registry
         const handler = this._createPipelineRequestHandler(method);
         const schemaForBaseServer = baseMethodSchema(method);
         // Register with the base server using the more permissive schema
@@ -273,7 +289,8 @@ export class GovernedServer {
         this.options.logger.debug(`Registered base request handler for: ${method}`);
     });
 
-    this.notificationHandlers.forEach((_handlerInfo, method) => {
+    // Iterate over handlers from the registry
+    this.handlerRegistry.getNotificationHandlers().forEach((_handlerInfo, method) => { // <-- Use registry
         const handler = this._createPipelineNotificationHandler(method);
          // Notifications also might have params, allow them minimally
          const notificationSchemaForBaseServer = z.object({
@@ -358,7 +375,12 @@ export class GovernedServer {
             const transportContext = buildTransportContext(this.transportInternal);
             const traceContext = this.options.traceContextProvider(transportContext, notification);
             const baseLogger = this.options.logger;
-            const notificationLogger = baseLogger.child ? baseLogger.child({ /* ... context ... */ }) : baseLogger;
+            const notificationLogger = baseLogger.child ? baseLogger.child({
+                eventId, method: notification.method,
+                ...(traceContext?.traceId && { traceId: traceContext.traceId }),
+                ...(traceContext?.spanId && { spanId: traceContext.spanId }),
+                ...(transportContext.sessionId && { sessionId: transportContext.sessionId }),
+             }) : baseLogger;
 
             const operationContext: OperationContext = {
                 eventId, timestamp: new Date(startTime), transportContext, traceContext,
