@@ -50,9 +50,45 @@ export class GovernancePipeline {
         operationContext: OperationContext,
         auditRecord: Partial<AuditRecord>
     ): Promise<Result> {
+        return this._executePipeline<JSONRPCRequest, Result>(
+            request,
+            baseExtra,
+            operationContext,
+            auditRecord,
+            false // isNotification = false
+        );
+    }
+
+    /** Executes the governance pipeline for a notification. */
+    async executeNotificationPipeline(
+        notification: JSONRPCNotification,
+        baseExtra: BaseRequestHandlerExtra,
+        operationContext: OperationContext,
+        auditRecord: Partial<AuditRecord>
+    ): Promise<void> {
+        await this._executePipeline<JSONRPCNotification, void>(
+            notification,
+            baseExtra,
+            operationContext,
+            auditRecord,
+            true // isNotification = true
+        );
+    }
+
+    /** Private helper to execute the common pipeline logic. */
+    private async _executePipeline<
+        T extends JSONRPCRequest | JSONRPCNotification,
+        R // R will be Result for requests, void for notifications
+    >(
+        payload: T,
+        baseExtra: BaseRequestHandlerExtra,
+        operationContext: OperationContext,
+        auditRecord: Partial<AuditRecord>,
+        isNotification: boolean
+    ): Promise<R> {
         const logger = operationContext.logger;
         const startTime = operationContext.timestamp.getTime();
-        let outcomeStatus: AuditRecord['outcome']['status'] = 'failure';
+        let outcomeStatus: AuditRecord['outcome']['status'] = isNotification ? 'success' : 'failure'; // Default based on type
         let pipelineError: Error | unknown | null = null;
 
         // Retain original headers for auditing
@@ -60,135 +96,101 @@ export class GovernancePipeline {
         // Create the proxied context *once* here
         const transportContextProxy = createImmutableTransportContextProxy(operationContext.transportContext);
 
-        try {
-            // Call the extracted request processing logic
-            const handlerResult = await processRequest(
-                this, // Pass the current instance
-                this.options,
-                this.requestHandlers,
-                request,
-                baseExtra,
-                { // Pass a potentially modified operationContext (with proxied transport)
-                    ...operationContext,
-                    transportContext: transportContextProxy
-                },
-                auditRecord
-            );
-            // If processRequest completes without error, outcome is success
-            outcomeStatus = 'success';
-            // The auditRecord.outcome.status should already be set to 'success' by processRequest
-            // along with auditRecord.outcome.mcpResponse
-            return handlerResult;
-
-        } catch (pipeErr) {
-            pipelineError = pipeErr;
-            // Determine outcome status based on the error caught here
-            // (processRequest sets the auditRecord status, but we confirm/log final status here)
-            if (pipeErr instanceof McpError) {
-                const errorData = pipeErr.data as { type?: string } | undefined;
-                if (errorData?.type === 'AuthorizationError') {
-                    outcomeStatus = 'denied';
-                } else {
-                    outcomeStatus = 'failure';
-                }
-            } else if (pipeErr instanceof AuthorizationError) {
-                outcomeStatus = 'denied';
-            } else {
-                outcomeStatus = 'failure';
-            }
-            // Ensure audit record status reflects the final outcome from this catch block
-            if (auditRecord.outcome) {
-                auditRecord.outcome.status = outcomeStatus;
-            }
-            logger.debug(`Request pipeline failed with status: ${outcomeStatus}`, { error: pipeErr });
-            // Rethrow the error to be converted into a JSONRPCError by the caller
-            throw pipeErr;
-        } finally {
-            // Call the centralized auditing function
-            finalizeAndLogAuditRecord({
-                auditRecord,
-                outcomeStatus,
-                pipelineError,
-                startTime,
-                operationContext, // Pass the original context
-                transportContext: transportContextProxy, // Pass the proxied context
-                originalHeaders,
-                options: this.options, // Pass relevant options
-                isNotification: false
-            }).catch(auditFinalizeErr => {
-                // Log errors during the finalization/logging itself, should be rare
-                logger.error("Failed to finalize or log audit record for request", { error: auditFinalizeErr, eventId: auditRecord.eventId });
-            });
-        }
-    }
-
-    /** Executes the governance pipeline for a notification. */
-    async executeNotificationPipeline(
-        notification: JSONRPCNotification,
-        baseExtra: BaseRequestHandlerExtra,
-        operationContext: OperationContext, // Assume pre-built context passed in
-        auditRecord: Partial<AuditRecord> // Assume pre-built base record passed in
-    ): Promise<void> {
-        const logger = operationContext.logger;
-        const startTime = operationContext.timestamp.getTime(); // Get start time from context
-        let outcomeStatus: AuditRecord['outcome']['status'] = 'success'; // Notifications default to success/ignored
-        let pipelineError: Error | unknown | null = null;
-
-        // Store original headers for audit log
-        const originalHeaders = Object.freeze({ ...(operationContext.transportContext.headers ?? {}) });
-
-        // Create immutable transport context with headers proxy
-        const transportContextProxy = createImmutableTransportContextProxy(operationContext.transportContext);
-
-        // Replace the transport context with the proxy for steps within processNotification
-        const notificationOperationContext = {
+        // Create the operation context with the proxied transport context
+        const pipelineOperationContext = {
             ...operationContext,
             transportContext: transportContextProxy
         };
 
         try {
-            logger.debug("Executing notification pipeline steps...");
-            // Call the extracted notification processing logic
-            await processNotification(
-                this, // Pass instance
-                this.options,
-                this.notificationHandlers,
-                notification,
-                baseExtra,
-                notificationOperationContext,
-                auditRecord // Pass the mutable audit record part
-            );
-            // If processNotification finishes without error, status is likely 'success'
-            // The processNotification function itself will set the correct auditRecord.outcome.status
-            // We retrieve it here for the final audit decision logic.
-            outcomeStatus = auditRecord.outcome?.status ?? 'success'; // Default to success if somehow unset
+            let handlerResult: R;
+            if (isNotification) {
+                // Type assertion needed because TS can't fully infer based on isNotification boolean alone here
+                logger.debug("Executing notification pipeline steps...");
+                await processNotification(
+                    this,
+                    this.options,
+                    this.notificationHandlers,
+                    payload as JSONRPCNotification, // Assert type
+                    baseExtra,
+                    pipelineOperationContext,
+                    auditRecord
+                );
+                // Retrieve status set by processNotification, default to 'success'
+                outcomeStatus = auditRecord.outcome?.status ?? 'success';
+                handlerResult = undefined as R; // Notifications return void
+            } else {
+                // Type assertion needed
+                logger.debug("Executing request pipeline steps...");
+                 handlerResult = await processRequest(
+                    this,
+                    this.options,
+                    this.requestHandlers,
+                    payload as JSONRPCRequest, // Assert type
+                    baseExtra,
+                    pipelineOperationContext,
+                    auditRecord
+                ) as R; // Result type for requests
+                // Retrieve status set by processRequest, default to 'success'
+                // (processRequest should set status and response on success)
+                 outcomeStatus = auditRecord.outcome?.status ?? 'success';
+                 // Return early on success for requests
+                 return handlerResult;
+            }
+        } catch (pipeErr) {
+            pipelineError = pipeErr;
+            // Determine outcome status based on the error
+            if (isNotification) {
+                outcomeStatus = 'failure';
+                logger.error("Error during notification pipeline execution", { error: pipeErr });
+                // Do not rethrow for notifications
+            } else {
+                // Request-specific error handling to determine status
+                if (pipeErr instanceof McpError) {
+                    const errorData = pipeErr.data as { type?: string } | undefined;
+                    outcomeStatus = errorData?.type === 'AuthorizationError' ? 'denied' : 'failure';
+                } else if (pipeErr instanceof AuthorizationError) {
+                    outcomeStatus = 'denied';
+                } else {
+                    outcomeStatus = 'failure';
+                }
+                logger.debug(`Request pipeline failed with status: ${outcomeStatus}`, { error: pipeErr });
+                // Rethrow for requests to be converted into JSONRPCError by the caller
+                // Note: Ensure auditRecord status is set *before* rethrowing
+                if (auditRecord.outcome) {
+                    auditRecord.outcome.status = outcomeStatus;
+                }
+                throw pipeErr;
+            }
 
-        } catch (err) { // Catch errors from context setup or within processNotification
-            pipelineError = err;
-            outcomeStatus = 'failure';
-            // Ensure audit record status reflects failure
+            // Ensure audit record status reflects the final outcome determined in catch
+            // (This is primarily for notifications, as request errors are rethrown above)
             if (auditRecord.outcome) {
                 auditRecord.outcome.status = outcomeStatus;
             }
-            logger.error("Error during notification pipeline execution", { error: err });
-            // We don't typically rethrow errors for notifications as there's no caller expecting a response
+
         } finally {
             // Call the centralized auditing function
             finalizeAndLogAuditRecord({
                 auditRecord,
-                outcomeStatus,
-                pipelineError, // Use pipelineError captured in catch block
+                // Use the outcomeStatus determined in try/catch
+                outcomeStatus, // This holds the final calculated status
+                pipelineError,
                 startTime,
                 operationContext, // Pass the original context
                 transportContext: transportContextProxy, // Pass the proxied context
                 originalHeaders,
-                options: this.options, // Pass relevant options
-                isNotification: true
+                options: this.options,
+                isNotification
             }).catch(auditFinalizeErr => {
-                // Log errors during the finalization/logging itself
-                logger.error("Failed to finalize or log audit record for notification", { error: auditFinalizeErr, eventId: auditRecord.eventId });
+                logger.error(`Failed to finalize or log audit record for ${isNotification ? 'notification' : 'request'}`, { error: auditFinalizeErr, eventId: auditRecord.eventId });
             });
         }
+
+        // This return is only relevant for the non-throwing notification path on success/failure
+        // or potentially request path if we decided not to return early in try (but we do)
+        // Needs a type assertion because TS struggles with the conditional return/throw/void paths
+        return undefined as R;
     }
 
 } // End GovernancePipeline class
