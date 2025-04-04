@@ -9,12 +9,12 @@ import { RequestHandlerExtra as BaseRequestHandlerExtra } from '@modelcontextpro
 import { z } from 'zod';
 import {
     OperationContext, AuditRecord, ProcessedGovernedServerOptions,
-} from '../types.js';
-import { Logger } from '../interfaces/logger.js';
-import { GovernancePipeline } from './governance-pipeline.js';
+} from '../../types.js';
+import { Logger } from '../../interfaces/logger.js';
+import { GovernancePipeline } from '../governance-pipeline.js';
 import { HandlerRegistry } from './handler-registry.js';
-import { mapErrorToPayload } from '../utils/error-mapper.js';
-import { generateEventId, buildTransportContext } from '../utils/helpers.js';
+import { mapErrorToPayload } from '../../utils/error-mapper.js';
+import { generateEventId, buildTransportContext } from '../../utils/helpers.js';
 
 /**
  * Handles the registration of governed handlers with the base MCP Server.

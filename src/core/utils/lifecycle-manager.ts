@@ -1,8 +1,8 @@
-import { Logger } from '../interfaces/logger.js';
-import { IdentityResolver } from '../interfaces/identity.js';
-import { RoleStore, PermissionStore } from '../interfaces/rbac.js';
-import { CredentialResolver } from '../interfaces/credentials.js';
-import { AuditLogStore } from '../interfaces/audit.js';
+import { Logger } from '../../interfaces/logger.js';
+import { IdentityResolver } from '../../interfaces/identity.js';
+import { RoleStore, PermissionStore } from '../../interfaces/rbac.js';
+import { CredentialResolver } from '../../interfaces/credentials.js';
+import { AuditLogStore } from '../../interfaces/audit.js';
 
 // Type alias for components with potential lifecycle methods
 export type LifecycleComponent =

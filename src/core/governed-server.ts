@@ -15,14 +15,14 @@ import {
     GovernedServerOptions, ProcessedGovernedServerOptions
 } from '../types.js';
 import { GovernancePipeline } from './governance-pipeline.js'; // Import the new class
-import { LifecycleManager } from './lifecycle-manager.js'; // Import the new class
-import { HandlerRegistry } from './handler-registry.js'; // <-- Import HandlerRegistry
+import { LifecycleManager } from './utils/lifecycle-manager.js'; // Import the new class
+import { HandlerRegistry } from './utils/handler-registry.js'; // <-- Import HandlerRegistry
 import { defaultLogger } from '../defaults/logger.js';
 import { defaultAuditStore } from '../defaults/audit.js';
 import { defaultTraceContextProvider } from '../defaults/tracing.js';
 import { defaultDerivePermission } from '../defaults/permissions.js';
 import { defaultSanitizeForAudit } from '../defaults/sanitization.js';
-import { GovernedHandlerRegistrar } from './governed-handler-registrar.js'; // <-- Import new class
+import { GovernedHandlerRegistrar } from './utils/governed-handler-registrar.js'; // <-- Import new class
 
 
 

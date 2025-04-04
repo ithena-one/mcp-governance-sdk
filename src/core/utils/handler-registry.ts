@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { ZodObject, ZodLiteral, ZodTypeAny } from 'zod';
-import { GovernedRequestHandler, GovernedNotificationHandler } from '../types.js'; // Assuming types are exported from governed-server
-import { Logger } from '../interfaces/logger.js';
+import { GovernedRequestHandler, GovernedNotificationHandler } from '../../types.js'; // Assuming types are exported from governed-server
+import { Logger } from '../../interfaces/logger.js';
 
 // Re-define or import necessary types if not exported from governed-server
 type AnyRequestSchema = ZodObject<{ method: ZodLiteral<string>;[key: string]: ZodTypeAny }>;
