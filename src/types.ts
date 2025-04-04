@@ -199,11 +199,7 @@ import { CredentialResolver } from './interfaces/credentials.js';
 import { AuditLogStore } from './interfaces/audit.js';
 import { TraceContextProvider } from './interfaces/tracing.js';
 
-// Schemas
-export type AnyRequestSchema = ZodObject<{ method: ZodLiteral<string>;[key: string]: ZodTypeAny }>;
-export type AnyNotificationSchema = ZodObject<{ method: ZodLiteral<string>;[key: string]: ZodTypeAny }>;
-type InferRequest<T extends AnyRequestSchema> = z.infer<T>;
-type InferNotification<T extends AnyNotificationSchema> = z.infer<T>;
+
 
 // Handlers
 export type GovernedRequestHandler<T extends AnyRequestSchema> = (
@@ -240,3 +236,11 @@ export type ProcessedGovernedServerOptions = Required<Pick<GovernedServerOptions
     | 'failOnCredentialResolutionError' | 'auditDeniedRequests' | 'auditNotifications'
     | 'derivePermission' | 'sanitizeForAudit'
 >> & GovernedServerOptions; 
+
+
+export type AnyRequestSchema = ZodObject<{ method: ZodLiteral<string>; [key: string]: ZodTypeAny }>;
+export type AnyNotificationSchema = ZodObject<{ method: ZodLiteral<string>; [key: string]: ZodTypeAny }>;
+export type InferRequest<T extends AnyRequestSchema> = z.infer<T>;
+export type InferNotification<T extends AnyNotificationSchema> = z.infer<T>;
+export type RequestHandlerMap = Map<string, { handler: (req: any, extra: GovernedRequestHandlerExtra) => Promise<Result>, schema: AnyRequestSchema }>;
+export type NotificationHandlerMap = Map<string, { handler: (notif: any, extra: GovernedNotificationHandlerExtra) => Promise<void>, schema: AnyNotificationSchema }>;
