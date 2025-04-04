@@ -72,6 +72,7 @@ Ithena offers two ways to achieve this: the **open-source SDK** (`@ithena-one/mc
 *   ✍️ **Comprehensive Auditing** (`AuditLogStore`)
 *   🪵 **Structured, Request-Scoped Logging** (`Logger`)
 *   🔗 **Trace Context Propagation** (W3C default via `TraceContextProvider`)
+*   🔬 **Optional OpenTelemetry Tracing** (Generates pipeline spans via `@opentelemetry/api`)
 *   ⚙️ **Configurable Governance Pipeline** (See **[Core Concepts](./docs/core-concepts.md)**)
 *   📦 **Minimal Intrusion** (Wraps the base SDK `Server`)
 
