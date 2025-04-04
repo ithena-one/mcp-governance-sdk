@@ -21,6 +21,7 @@ import { createImmutableTransportContextProxy } from './pipeline/context.js';
 import { processRequest } from './pipeline/request-pipeline.js';
 import { processNotification } from './pipeline/notification-pipeline.js';
 import { finalizeAndLogAuditRecord } from './pipeline/auditing.js';
+import { AuditMetricAttributes, auditLogCounter } from './pipeline/metrics-utils.js';
 
 
 
@@ -182,7 +183,17 @@ export class GovernancePipeline {
                 originalHeaders,
                 options: this.options,
                 isNotification
-            }).catch(auditFinalizeErr => {
+            })
+            .then(() => {
+                // Record audit success metric
+                const auditMetricAttributes: AuditMetricAttributes = { 'outcome.status': 'success' };
+                auditLogCounter.add(1, auditMetricAttributes);
+                logger.debug('Audit log succeeded', { eventId: auditRecord.eventId });
+            })
+            .catch(auditFinalizeErr => {
+                // Record audit failure metric
+                const auditMetricAttributes: AuditMetricAttributes = { 'outcome.status': 'failure' };
+                auditLogCounter.add(1, auditMetricAttributes);
                 logger.error(`Failed to finalize or log audit record for ${isNotification ? 'notification' : 'request'}`, { error: auditFinalizeErr, eventId: auditRecord.eventId });
             });
         }

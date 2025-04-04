@@ -7,7 +7,9 @@ import {
     Attributes} from '@opentelemetry/api';
 import { getTracer } from '../governed-server.js'; // Import the exported tracer getter
 import { GovernedServerOptions, OperationContext } from '../../types.js';
-import { TraceState } from '@opentelemetry/core'; // <-- Import the parser
+import { TraceState } from '@opentelemetry/core'; // Keep TraceState, remove parseTraceState
+import { Logger } from '../../interfaces/logger.js'; // Added missing import
+import { pipelineStepDurationHistogram, StepMetricAttributes } from './metrics-utils.js';
 
 export async function withPipelineSpan<
 T>(
@@ -38,10 +40,14 @@ T>(
 
     return tracer.startActiveSpan(name, { attributes }, parentCtx, async (span: Span) => {
         logger.debug(`Starting OTel span: ${name}`, { spanId: span.spanContext().spanId, traceId: span.spanContext().traceId });
+        const stepStartTime = Date.now(); // <-- Start timer for metric
+        let stepOutcomeStatus: 'success' | 'failure' = 'failure'; // <-- Track step outcome for metric
+        
         try {
             // Execute the actual pipeline step logic
             const result = await fn(span);
             span.setStatus({ code: SpanStatusCode.OK });
+            stepOutcomeStatus = 'success'; // <-- Set outcome on success
             logger.debug(`Ending OTel span: ${name} - OK`, { spanId: span.spanContext().spanId });
             return result;
         } catch (error: any) {
@@ -55,10 +61,20 @@ T>(
             if (error.name) {
                 span.setAttribute('error.type', error.name);
             }
+            // stepOutcomeStatus remains 'failure'
             logger.debug(`Ending OTel span: ${name} - ERROR`, { spanId: span.spanContext().spanId, error: error?.message });
             throw error; // Re-throw the error to maintain pipeline flow
         } finally {
-            span.end();
+            const stepEndTime = Date.now();
+            const stepDurationSeconds = (stepEndTime - stepStartTime) / 1000;
+            const metricAttributes: StepMetricAttributes = {
+                'ithena.step.name': name, // Use the span name as the step name
+                // Optional: Add outcome status if needed: 'outcome.status': stepOutcomeStatus
+            };
+            pipelineStepDurationHistogram.record(stepDurationSeconds, metricAttributes); // <-- Record metric
+            logger.debug('Recorded step duration metric', { name, durationSeconds: stepDurationSeconds, attributes: metricAttributes });
+
+            span.end(); // End the span (existing code)
         }
     });
 } 
