@@ -2,16 +2,14 @@
 // src/core/governed-server.ts
 
 import {
-    Notification, Result, JSONRPCRequest, JSONRPCNotification,
-    McpError, ErrorCode as McpErrorCode,
+    Notification
+    ,
 } from '@modelcontextprotocol/sdk/types.js';
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
-import { RequestHandlerExtra as BaseRequestHandlerExtra } from '@modelcontextprotocol/sdk/shared/protocol.js';
-import { z } from 'zod';
 import {
-    OperationContext, AuditRecord,
+    
     AnyRequestSchema, AnyNotificationSchema,
     GovernedRequestHandler, GovernedNotificationHandler,
     GovernedServerOptions, ProcessedGovernedServerOptions
@@ -19,13 +17,12 @@ import {
 import { GovernancePipeline } from './governance-pipeline.js'; // Import the new class
 import { LifecycleManager } from './lifecycle-manager.js'; // Import the new class
 import { HandlerRegistry } from './handler-registry.js'; // <-- Import HandlerRegistry
-import { mapErrorToPayload } from '../utils/error-mapper.js';
-import { generateEventId, buildTransportContext } from '../utils/helpers.js';
 import { defaultLogger } from '../defaults/logger.js';
 import { defaultAuditStore } from '../defaults/audit.js';
 import { defaultTraceContextProvider } from '../defaults/tracing.js';
 import { defaultDerivePermission } from '../defaults/permissions.js';
 import { defaultSanitizeForAudit } from '../defaults/sanitization.js';
+import { GovernedHandlerRegistrar } from './governed-handler-registrar.js'; // <-- Import new class
 
 
 
@@ -39,6 +36,7 @@ export class GovernedServer {
     private lifecycleManager: LifecycleManager;
     private readonly handlerRegistry: HandlerRegistry; // <-- Add HandlerRegistry instance
     private pipeline?: GovernancePipeline; // Instantiated after connect
+    private handlerRegistrar?: GovernedHandlerRegistrar; // <-- Add registrar instance
 
     constructor(
         baseServer: Server,
@@ -104,12 +102,19 @@ export class GovernedServer {
             // Pass necessary options and handler maps from the registry to the pipeline instance
             this.pipeline = new GovernancePipeline(
                 this.options,
-                this.handlerRegistry.getRequestHandlers(),      // <-- Get handlers from registry
-                this.handlerRegistry.getNotificationHandlers() // <-- Get handlers from registry
+                this.handlerRegistry.getRequestHandlers(),     
+                this.handlerRegistry.getNotificationHandlers() 
             );
 
-            // --- Register Base Handlers ---
-            this._registerBaseHandlers();
+            // --- Instantiate and use the Handler Registrar ---
+            this.handlerRegistrar = new GovernedHandlerRegistrar(
+                this.baseServer,
+                this.pipeline,      // Pass the pipeline instance
+                this.handlerRegistry,
+                this.options,
+                this.transportInternal // Pass the transport
+            );
+            this.handlerRegistrar.registerBaseHandlers(); // <-- Use the registrar
 
             // --- Connect Base Server ---
             await this.baseServer.connect(transport);
@@ -124,8 +129,9 @@ export class GovernedServer {
                     logger.error("Error during component shutdown on close", err);
                 }).finally(() => {
                     this.transportInternal = undefined;
-                    this.pipeline = undefined; // Clear pipeline instance
-                    this.handlerRegistry.setDisconnected(); // <-- Set disconnected
+                    this.pipeline = undefined;
+                    this.handlerRegistrar = undefined; 
+                    this.handlerRegistry.setDisconnected(); 
                     originalBaseOnClose?.();
                     logger.debug("Governed onclose handler finished.");
                 });
@@ -135,9 +141,10 @@ export class GovernedServer {
 
         } catch (error) {
             logger.error("GovernedServer connection failed during initialization", error);
-            await this.lifecycleManager.shutdown(); // Attempt cleanup on failure
+            await this.lifecycleManager.shutdown(); 
             this.transportInternal = undefined;
             this.pipeline = undefined;
+            this.handlerRegistrar = undefined;
             throw error;
         }
     }
@@ -150,51 +157,51 @@ export class GovernedServer {
         }
         logger.info("GovernedServer closing...");
 
-        // Shutdown components first using the manager
         await this.lifecycleManager.shutdown();
 
-        // Set registry as disconnected before potentially triggering onclose
-        this.handlerRegistry.setDisconnected(); // <-- Set disconnected
+        this.handlerRegistry.setDisconnected(); 
 
-        // Then close the base server (which should trigger our onclose handler)
         if (this.baseServer) {
             try {
                 await this.baseServer.close();
             } catch (err) {
                 logger.error("Error during baseServer.close()", err);
-                // Ensure state is cleared anyway
                 this.transportInternal = undefined;
                 this.pipeline = undefined;
+                this.handlerRegistrar = undefined; 
             }
         } else {
             this.transportInternal = undefined;
             this.pipeline = undefined;
-            // Ensure disconnected is set even if no base server existed or failed to close
-            this.handlerRegistry.setDisconnected(); // <-- Ensure disconnected
+            this.handlerRegistrar = undefined; 
+            this.handlerRegistry.setDisconnected(); 
         }
 
         logger.info("GovernedServer closed.");
     }
 
     async notification(notification: Notification): Promise<void> {
+        // Ensure baseServer exists before attempting to send notification
+        if (!this.baseServer) {
+            this.options.logger.warn("Cannot send notification, base server is not initialized.");
+            return; 
+        }
+
         await this.baseServer.notification(notification as any);
     }
 
-    // --- Handler Registration (remains the same, stores locally) ---
+    // --- Handler Registration ---
     setRequestHandler<T extends AnyRequestSchema>(
         requestSchema: T,
         handler: GovernedRequestHandler<T>
     ): void {
         const method = requestSchema.shape.method.value;
         if (this.transportInternal) {
-            // Check transportInternal state instead of registry's isConnected
-            // to maintain the original behavior/error message context.
+
             throw new Error(`Cannot register request handler for ${method} after connect() has been called.`);
         }
-        // Delegate registration to HandlerRegistry
         this.handlerRegistry.registerRequestHandler(requestSchema, handler); // <-- Delegate
-        // Logging is now handled within HandlerRegistry
-        // this.options.logger.debug(`Stored governed request handler for: ${method}`);
+
     }
 
     setNotificationHandler<T extends AnyNotificationSchema>(
@@ -203,158 +210,13 @@ export class GovernedServer {
     ): void {
         const method = notificationSchema.shape.method.value;
         if (this.transportInternal) {
-             // Check transportInternal state instead of registry's isConnected
-             // to maintain the original behavior/error message context.
+
             throw new Error(`Cannot register notification handler for ${method} after connect() has been called.`);
         }
         // Delegate registration to HandlerRegistry
         this.handlerRegistry.registerNotificationHandler(notificationSchema, handler); // <-- Delegate
-        // Logging is now handled within HandlerRegistry
-        // this.options.logger.debug(`Stored governed notification handler for: ${method}`);
+
     }
 
 
-    // --- Wrapper Handler Creation and Registration ---
-
-    /** Registers wrapper functions with the baseServer for all stored handlers. */
-   /** Registers wrapper functions with the baseServer for all stored handlers. */
-   private _registerBaseHandlers(): void {
-    this.options.logger.debug("Registering base server handlers for governed methods...");
-
-    // Define a base schema that allows optional params
-    // WORKAROUND: Registering with a schema that explicitly includes `params: z.any().optional()`
-    // appears necessary to prevent the current version of the base SDK Server
-    // from stripping the params object before calling this wrapper handler.
-    // This is related to an upstream issue/PR: https://github.com/modelcontextprotocol/typescript-sdk/pull/248
-    // This workaround should be removed once the upstream fix is incorporated.
-    const baseMethodSchema = (method: string) => z.object({
-        jsonrpc: z.literal("2.0").optional(), // Allow flexibility from base SDK parsing
-        id: z.union([z.string(), z.number()]).optional(), // Allow flexibility
-        method: z.literal(method),
-        params: z.any().optional() // <-- Explicitly allow optional params of any type
-    }).passthrough(); // Allow other fields like _meta
-
-    // Iterate over handlers from the registry
-    this.handlerRegistry.getRequestHandlers().forEach((_handlerInfo, method) => { // <-- Use registry
-        const handler = this._createPipelineRequestHandler(method);
-        const schemaForBaseServer = baseMethodSchema(method);
-        // Register with the base server using the more permissive schema
-        this.baseServer.setRequestHandler(schemaForBaseServer as any, handler as any);
-        this.options.logger.debug(`Registered base request handler for: ${method}`);
-    });
-
-    // Iterate over handlers from the registry
-    this.handlerRegistry.getNotificationHandlers().forEach((_handlerInfo, method) => { // <-- Use registry
-        const handler = this._createPipelineNotificationHandler(method);
-         // Notifications also might have params, allow them minimally
-         const notificationSchemaForBaseServer = z.object({
-             jsonrpc: z.literal("2.0").optional(),
-             method: z.literal(method),
-             params: z.any().optional()
-         }).passthrough();
-        this.baseServer.setNotificationHandler(notificationSchemaForBaseServer as any, handler as any);
-         this.options.logger.debug(`Registered base notification handler for: ${method}`);
-    });
-
-    this.options.logger.debug("Base handler registration complete.");
-}
-
-    /** Creates the wrapper that calls the request pipeline. */
-    private _createPipelineRequestHandler(method: string): (req: JSONRPCRequest, baseExtra: BaseRequestHandlerExtra) => Promise<Result> {
-        return async (request: JSONRPCRequest, baseExtra: BaseRequestHandlerExtra): Promise<Result> => {
-            if (!this.pipeline) {
-                this.options.logger.error(`Request received for ${method} but pipeline is not initialized. Server not connected?`);
-                throw new McpError(McpErrorCode.InternalError, "GovernedServer pipeline not initialized.");
-            }
-
-            // --- Prepare Initial Context for Pipeline ---
-            const eventId = generateEventId();
-            const startTime = Date.now();
-            const transportContext = buildTransportContext(this.transportInternal);
-            const traceContext = this.options.traceContextProvider(transportContext, request);
-            const baseLogger = this.options.logger;
-            const requestLogger = baseLogger.child ? baseLogger.child({
-                eventId, requestId: request.id, method: request.method,
-                ...(traceContext?.traceId && { traceId: traceContext.traceId }),
-                ...(traceContext?.spanId && { spanId: traceContext.spanId }),
-                ...(transportContext.sessionId && { sessionId: transportContext.sessionId }),
-            }) : baseLogger;
-
-            const operationContext: OperationContext = {
-                eventId,
-                timestamp: new Date(startTime),
-                transportContext,
-                traceContext,
-                logger: requestLogger,
-                mcpMessage: request,
-                serviceIdentifier: this.options.serviceIdentifier,
-            };
-
-            const auditRecord: Partial<AuditRecord> = {
-                eventId,
-                timestamp: new Date(startTime).toISOString(),
-                serviceIdentifier: this.options.serviceIdentifier,
-                transport: transportContext,
-                mcp: { type: "request", method: request.method, id: request.id },
-                trace: traceContext,
-                identity: null,
-            };
-
-            // --- Execute Pipeline ---
-            try {
-                requestLogger.debug(`Pipeline request handler invoked for: ${method}`);
-                // Delegate actual execution to the pipeline instance
-                return await this.pipeline.executeRequestPipeline(request, baseExtra, operationContext, auditRecord);
-            } catch (error) {
-                // Catch errors from the pipeline execution itself and map for baseServer
-                requestLogger.error(`Unhandled error in request pipeline execution for ${method}`, error);
-                const payload = mapErrorToPayload(error, McpErrorCode.InternalError, "Internal governance pipeline error");
-                throw new McpError(payload.code, payload.message, payload.data);
-            }
-        };
-    }
-
-    /** Creates the wrapper that calls the notification pipeline. */
-    private _createPipelineNotificationHandler(method: string): (notif: JSONRPCNotification, baseExtra: BaseRequestHandlerExtra) => Promise<void> {
-        return async (notification: JSONRPCNotification, baseExtra: BaseRequestHandlerExtra): Promise<void> => {
-            if (!this.pipeline) {
-                this.options.logger.error(`Notification received for ${method} but pipeline is not initialized. Server not connected?`);
-                // Don't throw for notifications, just log
-                return;
-            }
-
-            // --- Prepare Initial Context ---
-            const eventId = generateEventId();
-            const startTime = Date.now();
-            const transportContext = buildTransportContext(this.transportInternal);
-            const traceContext = this.options.traceContextProvider(transportContext, notification);
-            const baseLogger = this.options.logger;
-            const notificationLogger = baseLogger.child ? baseLogger.child({
-                eventId, method: notification.method,
-                ...(traceContext?.traceId && { traceId: traceContext.traceId }),
-                ...(traceContext?.spanId && { spanId: traceContext.spanId }),
-                ...(transportContext.sessionId && { sessionId: transportContext.sessionId }),
-             }) : baseLogger;
-
-            const operationContext: OperationContext = {
-                eventId, timestamp: new Date(startTime), transportContext, traceContext,
-                logger: notificationLogger, mcpMessage: notification, serviceIdentifier: this.options.serviceIdentifier,
-            };
-            const auditRecord: Partial<AuditRecord> = {
-                eventId, timestamp: new Date(startTime).toISOString(), serviceIdentifier: this.options.serviceIdentifier,
-                transport: transportContext, mcp: { type: "notification", method: notification.method },
-                trace: traceContext, identity: null,
-            };
-
-            // --- Execute Pipeline ---
-            try {
-                notificationLogger.debug(`Pipeline notification handler invoked for: ${method}`);
-                await this.pipeline.executeNotificationPipeline(notification, baseExtra, operationContext, auditRecord);
-            } catch (error) {
-                // Log pipeline errors, but don't throw
-                notificationLogger.error(`Unhandled error in notification pipeline execution for ${method}`, error);
-            }
-        };
-    }
-
-} // End GovernedServer class
+} 
