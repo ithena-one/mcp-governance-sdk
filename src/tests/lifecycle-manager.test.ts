@@ -1,7 +1,7 @@
 // src/core/lifecycle-manager.test.ts
-import { LifecycleManager } from '../core/lifecycle-manager.js';
+import { LifecycleManager } from '../core/utils/lifecycle-manager.js';
 import { Logger } from '../interfaces/logger.js';
-import type { LifecycleComponent } from '../core/lifecycle-manager.js';
+import type { LifecycleComponent } from '../core/utils/lifecycle-manager.js';
 
 // --- Mock Components ---
 

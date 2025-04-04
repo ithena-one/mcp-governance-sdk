@@ -5,7 +5,8 @@ import { jest } from '@jest/globals';
 
 import { Server as BaseServer } from '@modelcontextprotocol/sdk/server/index.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { GovernedServer, GovernedServerOptions, GovernedRequestHandler } from './governed-server.js';
+import { GovernedServer } from './governed-server.js';
+import { GovernedServerOptions, GovernedRequestHandler } from '../types.js';
 import { z } from 'zod';
 // Import Request type from base SDK for client.request input
 import { Request, Result } from '@modelcontextprotocol/sdk/types.js';

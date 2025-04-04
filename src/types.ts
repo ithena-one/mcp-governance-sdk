@@ -112,8 +112,6 @@ export interface GovernedRequestHandlerExtra extends BaseRequestHandlerExtra {
     readonly signal: AbortSignal;
 }
 
-
-
 /**
  * Extra context provided to notification handlers registered via `GovernedServer`.
  */
@@ -190,4 +188,59 @@ export interface AuditRecord {
     durationMs: number;
     /** Allow for custom fields added during sanitization. */
     [key: string]: any;
-} 
+}
+
+// --- Governed Server & Handler Types ---
+
+import { ZodObject, ZodLiteral, z, ZodTypeAny } from 'zod';
+import { IdentityResolver } from './interfaces/identity.js';
+import { RoleStore, PermissionStore } from './interfaces/rbac.js';
+import { CredentialResolver } from './interfaces/credentials.js';
+import { AuditLogStore } from './interfaces/audit.js';
+import { TraceContextProvider } from './interfaces/tracing.js';
+
+
+
+// Handlers
+export type GovernedRequestHandler<T extends AnyRequestSchema> = (
+    request: InferRequest<T>,
+    extra: GovernedRequestHandlerExtra
+) => Promise<Result>;
+
+export type GovernedNotificationHandler<T extends AnyNotificationSchema> = (
+    notification: InferNotification<T>,
+    extra: GovernedNotificationHandlerExtra
+) => Promise<void>;
+
+// Server Options
+export interface GovernedServerOptions {
+    identityResolver?: IdentityResolver;
+    roleStore?: RoleStore;
+    permissionStore?: PermissionStore;
+    credentialResolver?: CredentialResolver;
+    auditStore?: AuditLogStore;
+    logger?: Logger;
+    traceContextProvider?: TraceContextProvider;
+    enableRbac?: boolean;
+    failOnCredentialResolutionError?: boolean;
+    auditDeniedRequests?: boolean;
+    auditNotifications?: boolean;
+    derivePermission?: (request: Request, transportContext: TransportContext) => string | null;
+    sanitizeForAudit?: (record: Partial<AuditRecord>) => Partial<AuditRecord>;
+    postAuthorizationHook?: (identity: UserIdentity, opCtx: OperationContext) => Promise<void>;
+    serviceIdentifier?: string;
+}
+
+export type ProcessedGovernedServerOptions = Required<Pick<GovernedServerOptions,
+    | 'auditStore' | 'logger' | 'traceContextProvider' | 'enableRbac'
+    | 'failOnCredentialResolutionError' | 'auditDeniedRequests' | 'auditNotifications'
+    | 'derivePermission' | 'sanitizeForAudit'
+>> & GovernedServerOptions; 
+
+
+export type AnyRequestSchema = ZodObject<{ method: ZodLiteral<string>; [key: string]: ZodTypeAny }>;
+export type AnyNotificationSchema = ZodObject<{ method: ZodLiteral<string>; [key: string]: ZodTypeAny }>;
+export type InferRequest<T extends AnyRequestSchema> = z.infer<T>;
+export type InferNotification<T extends AnyNotificationSchema> = z.infer<T>;
+export type RequestHandlerMap = Map<string, { handler: (req: any, extra: GovernedRequestHandlerExtra) => Promise<Result>, schema: AnyRequestSchema }>;
+export type NotificationHandlerMap = Map<string, { handler: (notif: any, extra: GovernedNotificationHandlerExtra) => Promise<void>, schema: AnyNotificationSchema }>;
