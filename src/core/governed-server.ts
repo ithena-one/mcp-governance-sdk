@@ -23,8 +23,22 @@ import { defaultTraceContextProvider } from '../defaults/tracing.js';
 import { defaultDerivePermission } from '../defaults/permissions.js';
 import { defaultSanitizeForAudit } from '../defaults/sanitization.js';
 import { GovernedHandlerRegistrar } from './utils/governed-handler-registrar.js'; // <-- Import new class
+import {
+    trace,
+    Tracer
+} from '@opentelemetry/api';
 
-
+// --- OTel Setup ---
+const GSN_TRACER_NAME = '@ithena/mcp-governance';
+let GSN_TRACER: Tracer | undefined; 
+// Export the getter function
+export function getTracer(): Tracer {
+    if (!GSN_TRACER) {
+        // Use global tracer provider. User *must* configure the SDK for this to work.
+        GSN_TRACER = trace.getTracer(GSN_TRACER_NAME, '0.1.0'); // Use package version? How?
+    }
+    return GSN_TRACER;
+}
 
 /**
  * Wraps a base Model Context Protocol (MCP) Server to add a governance layer.
@@ -59,6 +73,7 @@ export class GovernedServer {
             auditNotifications: options.auditNotifications ?? false,
             derivePermission: options.derivePermission ?? defaultDerivePermission,
             sanitizeForAudit: options.sanitizeForAudit ?? defaultSanitizeForAudit,
+            enablePipelineTracing: options.enablePipelineTracing ?? false,
         };
 
         // Initialize HandlerRegistry

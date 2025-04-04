@@ -42,7 +42,7 @@ Below are the available options:
 | `sanitizeForAudit`              | `(record: AuditRecord) => AuditRecord`                          | `defaultSanitizeForAudit`   | **CRITICAL:** A function to remove or mask sensitive data (PII, secrets) from the `AuditRecord` before it's logged. **Review the default implementation carefully.** See **[Auditing & Logging](./auditing-logging.md)**. | Auditing     |
 | `postAuthorizationHook`         | `(identity: UserIdentity, opCtx: OperationContext) => Promise<void>` | `undefined`                 | An optional asynchronous function called after a request passes authorization checks (or if RBAC is disabled/not applicable). Can be used for secondary checks or setup based on identity. | -            |
 | `serviceIdentifier`             | `string`                                                        | `undefined`                 | An optional string identifying this specific instance of your MCP server. Included in logs and audit records for easier correlation.       | -            |
-
+| `enablePipelineTracing`         | `boolean`                                                       | `false`                     | If `true`, the governance pipeline will be traced with OpenTelemetry. Requires `traceContextProvider` to be provided.                         | Tracing      |
 **Important Notes:**
 
 *   If `enableRbac` is `true`, you **must** provide implementations for `identityResolver`, `roleStore`, and `permissionStore`. Failure to do so will result in an error during `GovernedServer` instantiation.

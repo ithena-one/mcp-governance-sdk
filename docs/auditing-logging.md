@@ -104,6 +104,126 @@ The SDK facilitates distributed tracing by extracting trace context information.
         *   The request-scoped `Logger`'s context (if the logger supports `child`).
     *   Use this context to correlate logs and traces across different services. Provide a custom provider if you use a different propagation standard.
 
+
+## OpenTelemetry Tracing (Pipeline Instrumentation)
+
+Beyond just propagating trace context, the SDK can optionally generate detailed OpenTelemetry spans for the internal stages of the governance pipeline, providing granular performance insights.
+
+This uses the standard [`@opentelemetry/api`](https://github.com/open-telemetry/opentelemetry-js-api) package.
+
+**Enabling the Feature:**
+
+1.  **Configure SDK:** Your application needs a fully configured OpenTelemetry SDK (`@opentelemetry/sdk-node`) with an appropriate Span Exporter (e.g., `ConsoleSpanExporter` for development, or an OTLP exporter like `@opentelemetry/exporter-trace-otlp-http` to send data to systems like Jaeger, Tempo, Datadog, etc.). **This SDK setup must run in your application's entry point *before* `GovernedServer` is imported or used.** The `mcp-governance` SDK only uses the OTel *API*; it relies on your application to initialize the *SDK* to actually collect and export the spans.
+
+    ```typescript
+    // Example minimal SDK setup in your app's main file (e.g., server.ts)
+    // Run this BEFORE other imports!
+    import { NodeSDK } from '@opentelemetry/sdk-node';
+    import { ConsoleSpanExporter } from '@opentelemetry/exporter-trace-console';
+    import { SimpleSpanProcessor } from '@opentelemetry/sdk-trace-node';
+
+    const sdk = new NodeSDK({
+      spanProcessor: new SimpleSpanProcessor(new ConsoleSpanExporter()),
+      // Add serviceName, other processors/exporters as needed
+    });
+    sdk.start();
+    // --- Your application code starts here ---
+    ```
+
+2.  **Enable in GovernedServer:** Set the `enablePipelineTracing` option to `true` in `GovernedServerOptions`:
+
+    ```typescript
+    import { GovernedServer } from '@ithena-one/mcp-governance';
+    // ... other imports
+
+    const server = new GovernedServer(baseServer, {
+        // ... other options ...
+        enablePipelineTracing: true, // <-- Enable span generation
+    });
+    ```
+
+**Instrumented Stages:**
+
+When enabled, the SDK will automatically create spans for the following key pipeline stages for both requests and notifications (where applicable):
+
+*   `Ithena: Identity Resolution`
+*   `Ithena: RBAC Check` (Requests only)
+*   `Ithena: Credential Resolution` (Requests only)
+*   `Ithena: Post-Authorization Hook` (Requests only)
+*   `Ithena: Handler Invocation` (Requests and Notifications)
+*   `Ithena: Notification Handler Invocation` (Specific span for notifications)
+
+These spans will automatically link to the incoming parent trace context extracted by the `TraceContextProvider`.
+
+**Automatically Added Attributes (Non-Sensitive Only):**
+
+To prioritize security and avoid accidental leakage of sensitive data, the automatically generated spans **only include predefined, non-sensitive attributes**:
+
+*   `ithena.eventId`: The unique ID for the request/notification lifecycle.
+*   `mcp.method`: The MCP method being called.
+*   `mcp.requestId`: The MCP request ID (for requests).
+*   `ithena.identity.resolved`: (boolean) Whether identity resolution succeeded.
+*   `ithena.authz.decision`: `'granted'`, `'denied'`, or `'not_applicable'`.
+*   `ithena.authz.permissionAttempted`: The permission string derived for the request (if applicable).
+*   `ithena.creds.status`: `'success'`, `'failure'`, `'skipped'`, or `'not_configured'`.
+*   `ithena.postAuthHook.configured`: (boolean) Whether a post-auth hook is configured.
+*   `ithena.handler.found`: (boolean, Notifications) Whether a handler was found for the notification.
+*   `ithena.handler.schemaValid`: (boolean, Notifications) Whether the notification passed schema validation.
+*   `error.type`: If a pipeline step fails, the Error `name` (e.g., `AuthorizationError`) might be added.
+
+**🚫 What is NOT automatically added:**
+
+*   User Identifiers (`identity.id`, email, etc.)
+*   Specific Roles assigned
+*   Resolved Credentials or Secrets
+*   Detailed error messages or stack traces (errors are recorded via `span.recordException`, but sensitive details in messages depend on the error itself)
+*   Request parameters or handler results
+
+**Adding Custom Attributes (Manual User Responsibility):**
+
+You can add your own specific attributes to the currently active span from within your custom components (Identity Resolvers, Role/Permission Stores, Credential Resolvers, Post-Auth Hooks, Handlers).
+
+1.  **Import the OTel API:**
+    ```typescript
+    import { trace } from '@opentelemetry/api';
+    ```
+2.  **Get the Active Span:** Call `trace.getActiveSpan()` within your component's logic.
+3.  **Add Attributes:** Use `span?.setAttribute('my.custom.attribute', 'value')` or `span?.setAttributes({...})`.
+
+```typescript
+// Example inside a custom IdentityResolver
+import { trace } from '@opentelemetry/api';
+import { IdentityResolver, OperationContext, UserIdentity } from '@ithena-one/mcp-governance';
+
+class MyCustomResolver implements IdentityResolver {
+    async resolveIdentity(opCtx: OperationContext): Promise<UserIdentity | null> {
+        const activeSpan = trace.getActiveSpan(); // Get the current span
+
+        opCtx.logger.info('Resolving identity...');
+        activeSpan?.addEvent('Starting external IDP lookup'); // Add an event
+
+        // ... logic to resolve identity ...
+        const identity = { id: 'user-xyz', tenant: 'acme-corp' };
+
+        if (identity) {
+            // Add a NON-SENSITIVE custom attribute
+            activeSpan?.setAttribute('custom.identity.tenantId', identity.tenant);
+
+            // ⚠️ WARNING: DO NOT DO THIS with sensitive data unless you understand the risks!
+            // activeSpan?.setAttribute('custom.identity.userId_SENSITIVE', identity.id);
+        } else {
+             activeSpan?.setAttribute('custom.identity.resolved', false);
+        }
+        activeSpan?.addEvent('Finished external IDP lookup');
+
+        return identity;
+    }
+}
+```
+
+**⚠️ IMPORTANT:** When adding custom attributes manually, **you are responsible for ensuring no sensitive data (PII, secrets, etc.) is included** unless you have explicitly decided it's safe and necessary for your specific tracing backend and compliance requirements. The SDK cannot automatically sanitize attributes added manually via `getActiveSpan()`.
+
+
 **Navigation:**
 * [← Back to Authorization](./authorization.md)
 * [Next: Default Implementations →](./defaults.md) 

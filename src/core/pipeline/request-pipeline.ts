@@ -22,6 +22,7 @@ import { checkRbacStep } from './steps/rbac-step.js';
 import { resolveCredentialsStep } from './steps/credentials-step.js';
 import { executePostAuthHookStep } from './steps/post-auth-hook-step.js';
 import { executeHandlerStep } from './steps/handler-step.js';
+import { withPipelineSpan } from './tracing-utils.js'; // <-- Import the tracing utility
 
 // Define handler map types (or import if refactored elsewhere)
 type AnyRequestSchema = ZodObject<{ method: ZodLiteral<string>; [key: string]: ZodTypeAny }>;
@@ -63,34 +64,97 @@ export async function processRequest(
 
     try {
         // 1. Identity Resolution
-        identity = await resolveIdentityStep(options, baseContext, auditRecord);
+        identity = await withPipelineSpan(
+            'Ithena: Identity Resolution',
+            options,
+            baseContext, // Use base context for initial attributes
+            {
+                'ithena.eventId': baseContext.eventId,
+                'mcp.method': request.method,
+                'mcp.requestId': request.id,
+            },
+            async (span) => {
+                const resolvedIdentity = await resolveIdentityStep(options, baseContext, auditRecord);
+                // Add non-sensitive result attributes AFTER step completes
+                span?.setAttribute('ithena.identity.resolved', !!resolvedIdentity);
+                return resolvedIdentity;
+            }
+        );
         const identityContext = Object.freeze({ ...baseContext, ...(identity && { identity }) });
 
         // 2. RBAC
-        const rbacResult = await checkRbacStep(
-            options, 
-            identity, 
-            baseContext, 
-            identityContext, 
-            transportContextProxy, 
-            auditRecord
+        const rbacResult = await withPipelineSpan(
+            'Ithena: RBAC Check',
+            options,
+            identityContext, // Context potentially has identity now
+            {
+                'ithena.eventId': baseContext.eventId,
+                'mcp.method': request.method,
+                'mcp.requestId': request.id,
+            },
+            async (span) => {
+                const result = await checkRbacStep(
+                    options, 
+                    identity, 
+                    baseContext, 
+                    identityContext, 
+                    transportContextProxy, 
+                    auditRecord
+                );
+                // Add non-sensitive result attributes
+                span?.setAttribute('ithena.authz.decision', auditRecord.authorization?.decision ?? 'not_applicable');
+                if (result.derivedPermission) {
+                    span?.setAttribute('ithena.authz.permissionAttempted', result.derivedPermission);
+                }
+                return result;
+            }
         );
         derivedPermission = rbacResult.derivedPermission;
         roles = rbacResult.roles;
         const rbacContext = Object.freeze({ ...identityContext, ...(derivedPermission !== undefined && { derivedPermission }), ...(roles && { roles }) });
 
         // 3. Credentials
-        resolvedCredentials = await resolveCredentialsStep(options, identity, rbacContext, auditRecord);
+        resolvedCredentials = await withPipelineSpan(
+            'Ithena: Credential Resolution',
+            options,
+            rbacContext, // Context potentially has identity/roles
+            {
+                'ithena.eventId': baseContext.eventId,
+                'mcp.method': request.method,
+                'mcp.requestId': request.id,
+            },
+            async (span) => {
+                const creds = await resolveCredentialsStep(options, identity, rbacContext, auditRecord);
+                // Add non-sensitive result attributes
+                span?.setAttribute('ithena.creds.status', auditRecord.credentialResolution?.status ?? 'not_configured');
+                return creds;
+            }
+        );
         const finalContext = Object.freeze({ ...rbacContext, ...(resolvedCredentials !== undefined && { resolvedCredentials }) });
 
         // 4. Post-Authorization Hook
-        await executePostAuthHookStep(
-            options, 
-            identity, 
-            baseContext, // Pass the original base context
-            roles, 
-            resolvedCredentials, 
-            auditRecord
+        await withPipelineSpan(
+            'Ithena: Post-Authorization Hook',
+            options,
+            finalContext, // Use context after credential resolution
+            {
+                'ithena.eventId': baseContext.eventId,
+                'mcp.method': request.method,
+                'mcp.requestId': request.id,
+                // Add attribute indicating if hook is configured
+                'ithena.postAuthHook.configured': !!options.postAuthorizationHook,
+            },
+            async (span) => {
+                // No specific non-sensitive results to capture, just timing and errors
+                await executePostAuthHookStep(
+                    options, 
+                    identity, 
+                    baseContext, // Original context for the hook logic itself
+                    roles, 
+                    resolvedCredentials, 
+                    auditRecord
+                );
+            }
         );
 
         // 5. Execute User Handler
@@ -101,13 +165,24 @@ export async function processRequest(
             resolvedCredentials?: ResolvedCredentials | null | undefined;
         }>;
         
-        const handlerResult = await executeHandlerStep(
-            requestHandlers, 
-            request, 
-            baseExtra, 
-            handlerStepContext, 
-            transportContextProxy,
-            auditRecord
+        const handlerResult = await withPipelineSpan(
+            'Ithena: Handler Invocation',
+            options,
+            finalContext, // Use final context before handler
+            {
+                'ithena.eventId': baseContext.eventId,
+                'mcp.method': request.method,
+                'mcp.requestId': request.id,
+            },
+            (span) => executeHandlerStep(
+                requestHandlers, 
+                request, 
+                baseExtra, 
+                handlerStepContext, 
+                transportContextProxy,
+                auditRecord
+            )
+            // No specific non-sensitive attributes from handler itself
         );
 
         // If handler step succeeded, the auditRecord.outcome.status is already 'success'

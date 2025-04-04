@@ -229,12 +229,18 @@ export interface GovernedServerOptions {
     sanitizeForAudit?: (record: Partial<AuditRecord>) => Partial<AuditRecord>;
     postAuthorizationHook?: (identity: UserIdentity, opCtx: OperationContext) => Promise<void>;
     serviceIdentifier?: string;
+    /**
+     * If true, enables OpenTelemetry span generation for the governance pipeline stages.
+     * Requires a configured OpenTelemetry Node.js SDK. Defaults to false.
+     * @default false
+     */
+    enablePipelineTracing?: boolean;
 }
 
 export type ProcessedGovernedServerOptions = Required<Pick<GovernedServerOptions,
     | 'auditStore' | 'logger' | 'traceContextProvider' | 'enableRbac'
     | 'failOnCredentialResolutionError' | 'auditDeniedRequests' | 'auditNotifications'
-    | 'derivePermission' | 'sanitizeForAudit'
+    | 'derivePermission' | 'sanitizeForAudit' | 'enablePipelineTracing'
 >> & GovernedServerOptions; 
 
 
