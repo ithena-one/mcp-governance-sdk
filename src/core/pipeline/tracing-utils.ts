@@ -69,7 +69,8 @@ T>(
             const stepDurationSeconds = (stepEndTime - stepStartTime) / 1000;
             const metricAttributes: StepMetricAttributes = {
                 'ithena.step.name': name, // Use the span name as the step name
-                // Optional: Add outcome status if needed: 'outcome.status': stepOutcomeStatus
+                // Add outcome status based on try/catch result
+                'outcome.status': stepOutcomeStatus 
             };
             pipelineStepDurationHistogram.record(stepDurationSeconds, metricAttributes); // <-- Record metric
             logger.debug('Recorded step duration metric', { name, durationSeconds: stepDurationSeconds, attributes: metricAttributes });

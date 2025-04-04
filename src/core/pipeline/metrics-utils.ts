@@ -25,7 +25,7 @@ export const requestDurationHistogram: Histogram<RequestMetricAttributes> = mete
         unit: 's', // seconds
         valueType: ValueType.DOUBLE,
         // TODO: Consider adding explicit bucket boundaries for better Prometheus/Grafana compatibility later
-        // adviceForConsumers: { explicitBucketBoundaries: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10] }
+        // (Bucket boundaries are typically configured in the SDK/View, not here in the instrument definition)
     }
 );
 
@@ -36,6 +36,7 @@ export const pipelineStepDurationHistogram: Histogram<StepMetricAttributes> = me
         unit: 's',
         valueType: ValueType.DOUBLE,
         // TODO: Consider explicit bucket boundaries here too
+        // (Bucket boundaries are typically configured in the SDK/View, not here in the instrument definition)
     }
 );
 
@@ -64,5 +65,6 @@ export interface AuditMetricAttributes extends Attributes {
 // Common attribute type for pipeline step duration metrics
 export interface StepMetricAttributes extends Attributes {
      'ithena.step.name': string; // e.g., 'Identity Resolution', 'RBAC Check'
-     // Could add 'outcome.status' here too if we want duration broken down by success/failure of the step
+     // Add outcome status dimension
+     'outcome.status': 'success' | 'failure';
 }
